@@ -102,11 +102,9 @@ recording-app/
 ### Desktop (macOS)
 
 1. Launch app
-2. Select mode: Microphone or System Audio
-3. For system audio: Grant Screen Recording permission in System Preferences
-4. Click record
-5. Stop when done
-6. Files saved to ~/Documents/Recordings/
+2. Click button to start recording Microphone & System Audio in separate channels
+2. Stop when done
+3. Files saved to ~/Documents/Recordings/
 
 **System audio:** Captures output from telehealth apps (Zoom, Teams, browsers)
 
