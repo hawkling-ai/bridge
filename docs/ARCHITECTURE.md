@@ -1,340 +1,415 @@
-# Architecture Documentation
+# Architecture Documentation (REVISED)
 
 ## Overview
 
-This document describes the technical architecture of the Recording App, a cross-platform audio recording application built with React Native and Expo.
+This document describes the technical architecture of the Recording App, a **cross-platform audio recording application** built with **Electron + React Native Web** (desktop) and **React Native/Expo** (iOS), maximizing code sharing through a monorepo structure.
 
 ## Architecture Principles
 
-### 1. Feature-Based Organization
-Code is organized by feature rather than by technical layer. Each feature contains its own components, hooks, stores, and types.
+### 1. Maximum Code Reuse (80-90%)
+Share as much code as possible between platforms using React Native Web, while keeping platform-specific code isolated in adapters.
 
-**Benefits**:
-- Better code locality
-- Easier to understand feature scope
-- Simpler to add/remove features
-- Reduces merge conflicts
+### 2. Platform Abstraction
+Platform-specific implementations hidden behind unified interfaces. The app logic doesn't know if it's running on iOS or Electron.
 
-### 2. Separation of Concerns
-Clear boundaries between UI, business logic, and data access layers.
-
+### 3. Separation of Concerns
+Clear boundaries between UI, business logic, and platform layers:
 ```
-UI Layer (Components)
+UI Layer (React Components)
     ↓
-Logic Layer (Hooks, Services)
+Business Logic (Hooks, Services)
     ↓
-Data Layer (Stores, APIs)
+Platform Abstraction (Adapters)
     ↓
-Platform Layer (Native Modules)
+Platform Implementation (expo-audio, Electron IPC, Native Addons)
 ```
 
-### 3. Platform Abstraction
-Platform-specific code is isolated in services, with a unified API exposed to the application.
+### 4. Type Safety First
+Strict TypeScript throughout. Shared types ensure consistency across packages.
 
-### 4. Type Safety
-Strict TypeScript with explicit types throughout the codebase. No `any` types allowed except where absolutely necessary.
+### 5. Monorepo for Scale
+Independent packages with shared code, managed with pnpm workspaces + Turborepo for fast builds.
 
 ## System Architecture
 
-### High-Level Architecture
+### High-Level Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      UI Layer                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
-│  │  Screens │  │Components│  │  Expo Router         │  │
-│  └──────────┘  └──────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│                   Business Logic Layer                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
-│  │  Hooks   │  │  Stores  │  │     Services         │  │
-│  │ (Custom) │  │(Zustand) │  │ (Audio, Storage)     │  │
-│  └──────────┘  └──────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│                   Platform Layer                        │
-│  ┌────────────┐  ┌────────────┐  ┌─────────────────┐   │
-│  │expo-audio  │  │expo-file-  │  │  Native Module  │   │
-│  │            │  │  system    │  │  (macOS only)   │   │
-│  └────────────┘  └────────────┘  └─────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│                     Native Layer                        │
-│  ┌────────────┐  ┌────────────┐  ┌─────────────────┐   │
-│  │iOS AVAudio │  │iOS File    │  │ScreenCaptureKit │   │
-│  │Foundation  │  │System      │  │   (macOS)       │   │
-│  └────────────┘  └────────────┘  └─────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      MONOREPO ROOT                            │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌────────────┐  ┌────────────┐  ┌────────────────────────┐ │
+│  │  packages/ │  │  packages/ │  │    packages/           │ │
+│  │   mobile   │  │  desktop   │  │     shared             │ │
+│  │            │  │            │  │                        │ │
+│  │  React     │  │  Electron  │  │  React Native          │ │
+│  │  Native    │  │  +         │  │  Components            │ │
+│  │  + Expo    │  │  RN Web    │  │  + Business Logic      │ │
+│  │            │  │            │  │  + Zustand Stores      │ │
+│  │  (iOS)     │  │  (Desktop) │  │  + Utils & Types       │ │
+│  └─────┬──────┘  └─────┬──────┘  └───────┬────────────────┘ │
+│        │                │                  │                  │
+│        └────────────────┴──────────────────┘                  │
+│                         │                                     │
+│                  Imports shared package                       │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │         native-modules/                                 │  │
+│  │         electron-screencapturekit/                      │  │
+│  │                                                         │  │
+│  │         Node.js Native Addon (C++/ObjC++)             │  │
+│  │         macOS ScreenCaptureKit bindings                │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## Layer Details
-
-### 1. UI Layer
-
-#### Expo Router Structure
-File-based routing system that maps file structure to routes.
+### Package Dependency Graph
 
 ```
-app/
-├── _layout.tsx                 # Root layout (providers, theme)
-├── (tabs)/                     # Tab group
-│   ├── _layout.tsx            # Tab configuration
-│   ├── index.tsx              # /              (Recording screen)
-│   └── recordings.tsx         # /recordings    (Recordings list)
-└── +not-found.tsx             # 404 fallback
+packages/mobile  ─────┐
+                      ├──→  packages/shared
+packages/desktop ─────┘
+                            ↓
+                     (consumes types,
+                      components,
+                      hooks, services)
+
+packages/desktop ────→ native-modules/electron-screencapturekit
+                      (uses for system audio capture)
 ```
 
-**Key Features**:
-- Automatic deep linking
-- Type-safe navigation with generated types
-- Shared layouts
-- Platform-specific files (`.ios.tsx`, `.macos.tsx`)
+## Layer Architecture
 
-#### Component Hierarchy
+### 1. Shared Package (Platform-Agnostic)
 
+The heart of the app - **80-90% of the codebase**.
+
+#### Structure
 ```
-App
-├── RootLayout (_layout.tsx)
-│   ├── Providers (Zustand, Theme, etc.)
-│   └── TabLayout ((tabs)/_layout.tsx)
-│       ├── RecordingScreen (index.tsx)
-│       │   ├── RecordButton
-│       │   ├── RecordingTimer
-│       │   └── AudioVisualizer
-│       └── RecordingsScreen (recordings.tsx)
-│           ├── RecordingsList
-│           │   └── RecordingItem
-│           └── EmptyState
+packages/shared/src/
+├── features/                    # Feature-based organization
+│   └── recording/
+│       ├── components/
+│       │   ├── RecordButton.tsx            # ✅ Works on iOS & Electron
+│       │   ├── RecordingTimer.tsx          # ✅ Works everywhere
+│       │   ├── RecordingsList.tsx          # ✅ Shared UI
+│       │   └── AudioWaveform.tsx           # ✅ Platform-agnostic
+│       ├── hooks/
+│       │   ├── useRecording.ts             # 🎯 Core recording logic
+│       │   ├── useRecordingPermissions.ts  # Platform adapter
+│       │   └── useAudioPlayer.ts           # Playback logic
+│       ├── store/
+│       │   └── recordingStore.ts           # Zustand store
+│       ├── services/
+│       │   ├── audioService.ts             # Platform abstraction
+│       │   └── storageService.ts           # File operations
+│       └── types/
+│           └── recording.types.ts          # Shared types
+├── components/                  # Reusable UI
+│   ├── Button.tsx
+│   ├── Card.tsx
+│   └── Modal.tsx
+├── utils/
+│   ├── platform.ts             # Platform detection
+│   ├── formatDuration.ts
+│   └── audioUtils.ts
+└── types/
+    └── index.ts                # Global types
 ```
 
-#### Component Patterns
+#### Key Components
 
-**1. Container/Presentational Pattern**
+**RecordButton.tsx** (Works on iOS + Electron)
 ```typescript
-// Container component (with logic)
-export default function RecordingScreen() {
-  const { startRecording, stopRecording, isRecording } = useRecording();
+import { TouchableOpacity, View, StyleSheet } from 'react-native';
 
+interface RecordButtonProps {
+  isRecording: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+}
+
+export function RecordButton({ isRecording, onPress, disabled }: RecordButtonProps) {
   return (
-    <RecordingView
-      onRecord={startRecording}
-      onStop={stopRecording}
-      isRecording={isRecording}
-    />
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.button,
+        isRecording && styles.recording,
+        disabled && styles.disabled,
+      ]}
+    >
+      <View style={[styles.inner, isRecording && styles.innerRecording]} />
+    </TouchableOpacity>
   );
 }
 
-// Presentational component (pure UI)
-function RecordingView({ onRecord, onStop, isRecording }) {
+const styles = StyleSheet.create({
+  button: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  recording: {
+    backgroundColor: '#EF4444',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  inner: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+  },
+  innerRecording: {
+    width: 30,
+    height: 30,
+    backgroundColor: '#fff',
+    borderRadius: 4,
+  },
+});
+```
+
+**✅ This exact code works on:**
+- iOS (React Native)
+- Desktop (React Native Web in Electron)
+- **Zero platform-specific code needed**
+
+#### Platform Abstraction Layer
+
+**audioService.ts** - Platform-agnostic interface
+```typescript
+// packages/shared/src/features/recording/services/audioService.ts
+import { isElectron, isIOS } from '../../../utils/platform';
+
+export type RecordingMode = 'microphone' | 'system';
+
+export interface AudioServiceInterface {
+  requestPermission(): Promise<boolean>;
+  startRecording(mode: RecordingMode): Promise<void>;
+  stopRecording(): Promise<string>; // Returns file URI
+  isRecording(): boolean;
+  getDuration(): number;
+}
+
+class AudioService implements AudioServiceInterface {
+  private adapter: AudioServiceInterface;
+
+  constructor() {
+    // Select platform-specific adapter
+    if (isElectron()) {
+      // Loaded from desktop package
+      this.adapter = new ElectronAudioAdapter();
+    } else if (isIOS()) {
+      // Loaded from mobile package
+      this.adapter = new ExpoAudioAdapter();
+    } else {
+      throw new Error('Unsupported platform');
+    }
+  }
+
+  async requestPermission(): Promise<boolean> {
+    return this.adapter.requestPermission();
+  }
+
+  async startRecording(mode: RecordingMode): Promise<void> {
+    if (mode === 'system' && !isElectron()) {
+      throw new Error('System audio only available on desktop');
+    }
+    return this.adapter.startRecording(mode);
+  }
+
+  async stopRecording(): Promise<string> {
+    return this.adapter.stopRecording();
+  }
+
+  isRecording(): boolean {
+    return this.adapter.isRecording();
+  }
+
+  getDuration(): number {
+    return this.adapter.getDuration();
+  }
+}
+
+export const audioService = new AudioService();
+```
+
+**platform.ts** - Platform detection utilities
+```typescript
+// packages/shared/src/utils/platform.ts
+
+export const isElectron = (): boolean => {
   return (
-    <View>
-      <RecordButton
-        onPress={isRecording ? onStop : onRecord}
-        isRecording={isRecording}
-      />
-    </View>
+    typeof window !== 'undefined' &&
+    typeof (window as any).electron !== 'undefined'
   );
-}
-```
+};
 
-**2. Compound Components**
-```typescript
-<RecordingCard>
-  <RecordingCard.Title>My Recording</RecordingCard.Title>
-  <RecordingCard.Duration>00:05:23</RecordingCard.Duration>
-  <RecordingCard.Actions>
-    <PlayButton />
-    <DeleteButton />
-  </RecordingCard.Actions>
-</RecordingCard>
-```
-
-### 2. Business Logic Layer
-
-#### Hooks
-
-Custom hooks encapsulate business logic and side effects.
-
-**useRecording** - Main recording hook
-```typescript
-export function useRecording() {
-  const recorder = useAudioRecorder(
-    RecordingPresets.HIGH_QUALITY,
-    handleStatusUpdate
+export const isNative = (): boolean => {
+  return (
+    !isElectron() &&
+    typeof navigator !== 'undefined' &&
+    (navigator as any).product === 'ReactNative'
   );
-  const addRecording = useRecordingStore(s => s.addRecording);
-  const [error, setError] = useState<Error | null>(null);
+};
 
-  const startRecording = async () => {
-    try {
-      const hasPermission = await requestAudioPermissions();
-      if (!hasPermission) throw new Error('Permission denied');
+export const isIOS = (): boolean => {
+  if (!isNative()) return false;
 
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-    } catch (err) {
-      setError(err as Error);
-    }
-  };
+  // React Native Platform API
+  const { Platform } = require('react-native');
+  return Platform.OS === 'ios';
+};
 
-  const stopRecording = async () => {
-    try {
-      await recorder.stop();
-      const uri = recorder.uri;
-      if (!uri) throw new Error('No recording URI');
+export const isMacOS = (): boolean => {
+  return isElectron() && process.platform === 'darwin';
+};
 
-      await saveRecording(uri);
-    } catch (err) {
-      setError(err as Error);
-    }
-  };
+export const isWindows = (): boolean => {
+  return isElectron() && process.platform === 'win32';
+};
 
-  return {
-    startRecording,
-    stopRecording,
-    isRecording: recorder.isRecording,
-    currentTime: recorder.currentTime,
-    error,
-  };
-}
-```
-
-**useAudioPermissions** - Permission management
-```typescript
-export function useAudioPermissions() {
-  const [status, setStatus] = useState<PermissionStatus | null>(null);
-
-  const requestPermission = async () => {
-    const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-    setStatus(granted ? 'granted' : 'denied');
-    return granted;
-  };
-
-  const checkPermission = async () => {
-    const { status } = await AudioModule.getRecordingPermissionsAsync();
-    setStatus(status);
-    return status === 'granted';
-  };
-
-  useEffect(() => {
-    checkPermission();
-  }, []);
-
-  return { status, requestPermission, checkPermission };
-}
+export const isLinux = (): boolean => {
+  return isElectron() && process.platform === 'linux';
+};
 ```
 
 #### State Management (Zustand)
 
-**Why Zustand?**
-- Minimal boilerplate
-- No provider hell
-- Excellent TypeScript support
-- Small bundle size (<1KB)
-- Easy to learn
-
-**Store Structure**:
+**recordingStore.ts**
 ```typescript
-// src/features/recording/store/recordingStore.ts
-interface Recording {
+// packages/shared/src/features/recording/store/recordingStore.ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export interface Recording {
   id: string;
   filename: string;
   title: string;
-  duration: number;
-  size: number;
-  createdAt: number;
+  duration: number; // seconds
+  size: number; // bytes
+  createdAt: number; // timestamp
   recordingMode: 'microphone' | 'system';
   uri: string;
+  waveform?: number[]; // Optional waveform data
 }
 
 interface RecordingStore {
   // State
   recordings: Recording[];
   currentRecording: Recording | null;
-  isLoading: boolean;
-  error: string | null;
+  isRecording: boolean;
+  recordingMode: 'microphone' | 'system';
 
-  // Sync actions
+  // Actions
   setRecordings: (recordings: Recording[]) => void;
   addRecording: (recording: Recording) => void;
   updateRecording: (id: string, data: Partial<Recording>) => void;
   removeRecording: (id: string) => void;
   setCurrentRecording: (recording: Recording | null) => void;
+  setIsRecording: (isRecording: boolean) => void;
+  setRecordingMode: (mode: 'microphone' | 'system') => void;
 
   // Async actions
   loadRecordings: () => Promise<void>;
   deleteRecording: (id: string) => Promise<void>;
 }
 
-export const useRecordingStore = create<RecordingStore>((set, get) => ({
-  // Initial state
-  recordings: [],
-  currentRecording: null,
-  isLoading: false,
-  error: null,
+export const useRecordingStore = create<RecordingStore>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      recordings: [],
+      currentRecording: null,
+      isRecording: false,
+      recordingMode: 'microphone',
 
-  // Sync actions
-  setRecordings: (recordings) => set({ recordings }),
+      // Sync actions
+      setRecordings: (recordings) => set({ recordings }),
 
-  addRecording: (recording) =>
-    set((state) => ({
-      recordings: [recording, ...state.recordings],
-    })),
+      addRecording: (recording) =>
+        set((state) => ({
+          recordings: [recording, ...state.recordings],
+        })),
 
-  updateRecording: (id, data) =>
-    set((state) => ({
-      recordings: state.recordings.map((r) =>
-        r.id === id ? { ...r, ...data } : r
-      ),
-    })),
+      updateRecording: (id, data) =>
+        set((state) => ({
+          recordings: state.recordings.map((r) =>
+            r.id === id ? { ...r, ...data } : r
+          ),
+        })),
 
-  removeRecording: (id) =>
-    set((state) => ({
-      recordings: state.recordings.filter((r) => r.id !== id),
-    })),
+      removeRecording: (id) =>
+        set((state) => ({
+          recordings: state.recordings.filter((r) => r.id !== id),
+        })),
 
-  setCurrentRecording: (recording) => set({ currentRecording: recording }),
+      setCurrentRecording: (recording) => set({ currentRecording: recording }),
+      setIsRecording: (isRecording) => set({ isRecording }),
+      setRecordingMode: (recordingMode) => set({ recordingMode }),
 
-  // Async actions
-  loadRecordings: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const recordings = await StorageService.loadRecordings();
-      set({ recordings, isLoading: false });
-    } catch (error) {
-      set({ error: error.message, isLoading: false });
+      // Async actions
+      loadRecordings: async () => {
+        try {
+          const { storageService } = await import('../services/storageService');
+          const recordings = await storageService.loadRecordings();
+          set({ recordings });
+        } catch (error) {
+          console.error('Failed to load recordings:', error);
+        }
+      },
+
+      deleteRecording: async (id) => {
+        const recording = get().recordings.find((r) => r.id === id);
+        if (!recording) return;
+
+        try {
+          const { storageService } = await import('../services/storageService');
+          await storageService.deleteRecording(recording.filename);
+          get().removeRecording(id);
+        } catch (error) {
+          console.error('Failed to delete recording:', error);
+          throw error;
+        }
+      },
+    }),
+    {
+      name: 'recording-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        recordings: state.recordings,
+        recordingMode: state.recordingMode,
+      }),
     }
-  },
-
-  deleteRecording: async (id) => {
-    const recording = get().recordings.find((r) => r.id === id);
-    if (!recording) return;
-
-    try {
-      await StorageService.deleteRecording(recording.filename);
-      get().removeRecording(id);
-    } catch (error) {
-      set({ error: error.message });
-    }
-  },
-}));
+  )
+);
 ```
 
-**Store Usage**:
+**Store Usage:**
 ```typescript
-// In component
-function RecordingsScreen() {
+// In any component (iOS or Electron)
+import { useRecordingStore } from '@recording-app/shared/features/recording/store/recordingStore';
+
+function RecordingsListScreen() {
   const recordings = useRecordingStore(s => s.recordings);
-  const loadRecordings = useRecordingStore(s => s.loadRecordings);
   const deleteRecording = useRecordingStore(s => s.deleteRecording);
+  const loadRecordings = useRecordingStore(s => s.loadRecordings);
 
   useEffect(() => {
     loadRecordings();
-  }, [loadRecordings]);
+  }, []);
 
   return (
     <FlatList
@@ -350,499 +425,808 @@ function RecordingsScreen() {
 }
 ```
 
-#### Services
+### 2. Mobile Package (iOS - React Native + Expo)
 
-Services encapsulate business logic and platform APIs.
+**iOS-specific adapter using expo-audio (real API)**
 
-**audioService.ts** - Audio recording logic
+#### ExpoAudioAdapter.ts
 ```typescript
-// src/services/audioService.ts
-export class AudioService {
-  private static audioMode: AudioMode = {
-    allowsRecording: true,
-    playsInSilentMode: true,
-    shouldPlayInBackground: true,
-  };
+// packages/mobile/src/adapters/ExpoAudioAdapter.ts
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+} from 'expo-audio';
+import type { AudioServiceInterface, RecordingMode } from '@recording-app/shared';
 
-  static async initialize() {
-    await setAudioModeAsync(this.audioMode);
-  }
+export class ExpoAudioAdapter implements AudioServiceInterface {
+  private recorder: ReturnType<typeof useAudioRecorder> | null = null;
+  private recorderState: ReturnType<typeof useAudioRecorderState> | null = null;
 
-  static async requestPermission(): Promise<boolean> {
+  async requestPermission(): Promise<boolean> {
     const { granted } = await AudioModule.requestRecordingPermissionsAsync();
     return granted;
   }
 
-  static async checkPermission(): Promise<boolean> {
-    const { status } = await AudioModule.getRecordingPermissionsAsync();
-    return status === 'granted';
+  async startRecording(mode: RecordingMode): Promise<void> {
+    if (mode === 'system') {
+      throw new Error('System audio not supported on iOS');
+    }
+
+    // Configure audio mode
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      staysActiveInBackground: true,
+    });
+
+    // Initialize recorder
+    if (!this.recorder) {
+      // In real implementation, this would be in a hook
+      const { useAudioRecorder } = await import('expo-audio');
+      this.recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    }
+
+    // Start recording
+    await this.recorder.prepareToRecordAsync();
+    this.recorder.record();
   }
 
-  static createRecorder(quality: RecordingQuality = 'HIGH_QUALITY') {
-    return useAudioRecorder(
-      RecordingPresets[quality],
-      (status) => console.log('Recording status:', status)
-    );
+  async stopRecording(): Promise<string> {
+    if (!this.recorder) {
+      throw new Error('No active recording');
+    }
+
+    await this.recorder.stop();
+    const uri = this.recorder.uri;
+
+    if (!uri) {
+      throw new Error('No recording URI');
+    }
+
+    return uri;
+  }
+
+  isRecording(): boolean {
+    return this.recorder?.isRecording ?? false;
+  }
+
+  getDuration(): number {
+    return this.recorder?.durationMillis ?? 0;
   }
 }
 ```
 
-**storageService.ts** - File system operations
+#### Real expo-audio Hook Usage
 ```typescript
-// src/services/storageService.ts
-export class StorageService {
-  private static RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`;
-  private static METADATA_KEY = '@recordings_metadata';
+// packages/mobile/app/(tabs)/index.tsx
+import { useState, useEffect } from 'react';
+import { View, Button, Text, Alert } from 'react-native';
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+} from 'expo-audio';
+import { useRecordingStore } from '@recording-app/shared';
 
-  static async initialize() {
-    const dirInfo = await FileSystem.getInfoAsync(this.RECORDINGS_DIR);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(this.RECORDINGS_DIR, {
-        intermediates: true,
+export default function RecordingScreen() {
+  // expo-audio hooks
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
+
+  // Zustand store
+  const addRecording = useRecordingStore(s => s.addRecording);
+
+  const startRecording = async () => {
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+  };
+
+  const stopRecording = async () => {
+    await audioRecorder.stop();
+
+    // Save to store
+    if (audioRecorder.uri) {
+      addRecording({
+        id: Date.now().toString(),
+        filename: `recording_${Date.now()}.m4a`,
+        title: `Recording ${new Date().toLocaleString()}`,
+        duration: Math.round(recorderState.durationMillis / 1000),
+        size: 0, // Will be filled by storage service
+        createdAt: Date.now(),
+        recordingMode: 'microphone',
+        uri: audioRecorder.uri,
       });
     }
+  };
+
+  useEffect(() => {
+    (async () => {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        Alert.alert('Permission denied');
+        return;
+      }
+
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true,
+      });
+    })();
+  }, []);
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
+      <Button
+        title={recorderState.isRecording ? 'Stop Recording' : 'Start Recording'}
+        onPress={recorderState.isRecording ? stopRecording : startRecording}
+      />
+      {recorderState.isRecording && (
+        <Text>
+          Duration: {Math.round(recorderState.durationMillis / 1000)}s
+        </Text>
+      )}
+    </View>
+  );
+}
+```
+
+### 3. Desktop Package (Electron + React Native Web)
+
+#### Electron Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Electron App                          │
+├──────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌────────────────┐              ┌──────────────────┐   │
+│  │  Main Process  │              │ Renderer Process │   │
+│  │   (Node.js)    │              │  (RN Web + React)│   │
+│  │                │◄────IPC─────►│                  │   │
+│  │  - IPC Handler │              │  - UI Components │   │
+│  │  - File System │              │  - Shared Code   │   │
+│  │  - Native      │              │  - Business Logic│   │
+│  │    Modules     │              │                  │   │
+│  └────────┬───────┘              └──────────────────┘   │
+│           │                                              │
+│           ▼                                              │
+│  ┌─────────────────────────────┐                        │
+│  │  Native Module               │                        │
+│  │  electron-screencapturekit   │                        │
+│  │  (C++/Obj-C++  Node Addon)  │                        │
+│  │                              │                        │
+│  │  - ScreenCaptureKit bindings │                        │
+│  │  - System audio capture      │                        │
+│  └─────────────────────────────┘                        │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### Main Process (IPC Handlers)
+```typescript
+// packages/desktop/src/main/index.ts
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { MacOSAudioCapture } from './audio/macos-capture';
+import path from 'path';
+
+let mainWindow: BrowserWindow | null = null;
+let audioCapture: MacOSAudioCapture | null = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+}
+
+// IPC Handlers
+ipcMain.handle('audio:checkPermission', async () => {
+  if (process.platform === 'darwin') {
+    return MacOSAudioCapture.checkScreenRecordingPermission();
+  }
+  return true;
+});
+
+ipcMain.handle('audio:requestPermission', async () => {
+  if (process.platform === 'darwin') {
+    return MacOSAudioCapture.requestScreenRecordingPermission();
+  }
+  return true;
+});
+
+ipcMain.handle('audio:startSystemCapture', async (event, options) => {
+  if (process.platform !== 'darwin') {
+    throw new Error('System audio only supported on macOS');
   }
 
-  static async saveRecording(
-    uri: string,
-    metadata: RecordingMetadata
-  ): Promise<Recording> {
-    const filename = `recording_${Date.now()}_${uuid()}.m4a`;
-    const newUri = this.RECORDINGS_DIR + filename;
+  audioCapture = new MacOSAudioCapture(options);
+  await audioCapture.start();
+});
 
-    // Move file from temp location to recordings directory
-    await FileSystem.moveAsync({ from: uri, to: newUri });
+ipcMain.handle('audio:stopSystemCapture', async () => {
+  if (!audioCapture) {
+    throw new Error('No active capture');
+  }
 
-    // Get file info
-    const fileInfo = await FileSystem.getInfoAsync(newUri);
+  const filePath = await audioCapture.stop();
+  audioCapture = null;
+  return filePath;
+});
 
-    const recording: Recording = {
-      id: uuid(),
-      filename,
-      uri: newUri,
-      size: fileInfo.size || 0,
-      createdAt: Date.now(),
-      ...metadata,
+ipcMain.handle('audio:getCaptureStatus', async () => {
+  if (!audioCapture) {
+    return { isCapturing: false };
+  }
+
+  return {
+    isCapturing: audioCapture.isCapturing,
+    duration: audioCapture.duration,
+    fileSize: audioCapture.fileSize,
+  };
+});
+
+app.whenReady().then(createWindow);
+```
+
+#### Preload Script (Secure IPC Bridge)
+```typescript
+// packages/desktop/src/preload.ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods to renderer
+contextBridge.exposeInMainWorld('electron', {
+  audio: {
+    checkPermission: () =>
+      ipcRenderer.invoke('audio:checkPermission'),
+
+    requestPermission: () =>
+      ipcRenderer.invoke('audio:requestPermission'),
+
+    startSystemCapture: (options: any) =>
+      ipcRenderer.invoke('audio:startSystemCapture', options),
+
+    stopSystemCapture: () =>
+      ipcRenderer.invoke('audio:stopSystemCapture'),
+
+    getCaptureStatus: () =>
+      ipcRenderer.invoke('audio:getCaptureStatus'),
+  },
+});
+
+// TypeScript declarations
+declare global {
+  interface Window {
+    electron: {
+      audio: {
+        checkPermission(): Promise<boolean>;
+        requestPermission(): Promise<boolean>;
+        startSystemCapture(options: any): Promise<void>;
+        stopSystemCapture(): Promise<string>;
+        getCaptureStatus(): Promise<{
+          isCapturing: boolean;
+          duration?: number;
+          fileSize?: number;
+        }>;
+      };
     };
-
-    // Save metadata
-    await this.saveMetadata(recording);
-
-    return recording;
-  }
-
-  static async loadRecordings(): Promise<Recording[]> {
-    const metadata = await AsyncStorage.getItem(this.METADATA_KEY);
-    if (!metadata) return [];
-
-    const recordings: Recording[] = JSON.parse(metadata);
-
-    // Verify files still exist
-    const validRecordings = await Promise.all(
-      recordings.map(async (recording) => {
-        const info = await FileSystem.getInfoAsync(recording.uri);
-        return info.exists ? recording : null;
-      })
-    );
-
-    return validRecordings.filter(Boolean) as Recording[];
-  }
-
-  static async deleteRecording(filename: string): Promise<void> {
-    const uri = this.RECORDINGS_DIR + filename;
-    await FileSystem.deleteAsync(uri);
-
-    // Update metadata
-    const recordings = await this.loadRecordings();
-    const updated = recordings.filter((r) => r.filename !== filename);
-    await AsyncStorage.setItem(this.METADATA_KEY, JSON.stringify(updated));
-  }
-
-  private static async saveMetadata(recording: Recording): Promise<void> {
-    const recordings = await this.loadRecordings();
-    recordings.unshift(recording);
-    await AsyncStorage.setItem(this.METADATA_KEY, JSON.stringify(recordings));
   }
 }
 ```
 
-### 3. Platform Layer
-
-#### expo-audio Integration
-
-**Recording Flow**:
-```
-1. Request permission
-2. Configure audio mode
-3. Create recorder with useAudioRecorder hook
-4. Prepare to record: prepareToRecordAsync()
-5. Start recording: record()
-6. Monitor state: useAudioRecorderState()
-7. Stop recording: stop()
-8. Get URI: recorder.uri
-9. Save file to permanent location
-```
-
-**Audio Modes**:
+#### Electron Audio Adapter
 ```typescript
-const RECORDING_MODE: AudioMode = {
-  allowsRecording: true,
-  playsInSilentMode: true,
-  shouldPlayInBackground: true,
-  staysActiveInBackground: true,
-};
+// packages/desktop/src/adapters/ElectronAudioAdapter.ts
+import type { AudioServiceInterface, RecordingMode } from '@recording-app/shared';
 
-const PLAYBACK_MODE: AudioMode = {
-  allowsRecording: false,
-  playsInSilentMode: false,
-  shouldPlayInBackground: false,
-};
-```
+export class ElectronAudioAdapter implements AudioServiceInterface {
+  private _isRecording = false;
+  private _startTime: number | null = null;
 
-#### expo-file-system Integration
-
-**Directory Structure**:
-```
-FileSystem.documentDirectory/
-└── recordings/
-    ├── recording_1234567890_abc-123.m4a
-    ├── recording_1234567891_def-456.m4a
-    └── recording_1234567892_ghi-789.m4a
-```
-
-**File Operations**:
-- `moveAsync()` - Move temp recording to permanent location
-- `deleteAsync()` - Delete recording
-- `getInfoAsync()` - Get file metadata (size, exists)
-- `readDirectoryAsync()` - List all recordings
-
-### 4. Native Layer (Phase 3)
-
-#### macOS ScreenCaptureKit Module
-
-**Module Structure**:
-```
-modules/system-audio-macos/
-├── ios/                           # Swift implementation
-│   ├── SystemAudioMacOS.swift    # Main module
-│   ├── AudioCaptureSession.swift # Capture logic
-│   └── PermissionManager.swift   # Permission handling
-├── src/
-│   └── index.ts                  # TypeScript bridge
-├── expo-module.config.json       # Expo module config
-└── README.md                     # Implementation guide
-```
-
-**ScreenCaptureKit Flow**:
-```
-1. Check screen recording permission
-2. If not granted, guide user to Settings
-3. Present SCContentSharingPicker
-4. User selects content (display, window, or app)
-5. Configure SCStreamConfiguration
-   - Audio only (no video)
-   - Sample rate: 48000 Hz
-   - Channel count: 2 (stereo)
-6. Create SCStream with configuration
-7. Add stream output delegate
-8. Start stream
-9. Receive audio samples in delegate
-10. Write samples to file
-11. Stop stream
-12. Return file URI
-```
-
-**Swift Implementation Sketch**:
-```swift
-import ScreenCaptureKit
-
-class AudioCaptureSession: NSObject, SCStreamOutput {
-  private var stream: SCStream?
-  private var fileWriter: AVAssetWriter?
-
-  func startCapture(content: SCShareableContent) async throws {
-    let config = SCStreamConfiguration()
-    config.capturesAudio = true
-    config.sampleRate = 48000
-    config.channelCount = 2
-
-    let filter = SCContentFilter(
-      desktopIndependentWindow: content.windows.first!
-    )
-
-    stream = SCStream(
-      filter: filter,
-      configuration: config,
-      delegate: nil
-    )
-
-    try stream?.addStreamOutput(self, type: .audio)
-    try await stream?.startCapture()
+  async requestPermission(): Promise<boolean> {
+    return window.electron.audio.checkPermission();
   }
 
-  func stream(
-    _ stream: SCStream,
-    didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
-    of type: SCStreamOutputType
-  ) {
-    guard type == .audio else { return }
-    // Write audio samples to file
-    fileWriter?.append(sampleBuffer)
+  async startRecording(mode: RecordingMode): Promise<void> {
+    if (mode === 'system') {
+      const hasPermission = await window.electron.audio.checkPermission();
+
+      if (!hasPermission) {
+        const granted = await window.electron.audio.requestPermission();
+        if (!granted) {
+          throw new Error('Screen Recording permission denied');
+        }
+      }
+
+      await window.electron.audio.startSystemCapture({
+        source: 'display',
+        quality: 'high',
+      });
+    } else {
+      // Microphone recording via Web Audio API
+      // Implementation here
+    }
+
+    this._isRecording = true;
+    this._startTime = Date.now();
+  }
+
+  async stopRecording(): Promise<string> {
+    const uri = await window.electron.audio.stopSystemCapture();
+    this._isRecording = false;
+    this._startTime = null;
+    return uri;
+  }
+
+  isRecording(): boolean {
+    return this._isRecording;
+  }
+
+  getDuration(): number {
+    if (!this._startTime) return 0;
+    return Date.now() - this._startTime;
   }
 }
 ```
 
-**TypeScript Bridge**:
+#### Renderer (React Native Web)
 ```typescript
-// modules/system-audio-macos/src/index.ts
-import { NativeModulesProxy } from 'expo-modules-core';
+// packages/desktop/src/renderer/App.tsx
+import React from 'react';
+import { View, Text } from 'react-native';
+import { RecordButton, RecordingsList } from '@recording-app/shared';
+import { useRecordingStore } from '@recording-app/shared';
 
-const SystemAudioMacOS = NativeModulesProxy.SystemAudioMacOS;
+export default function App() {
+  const isRecording = useRecordingStore(s => s.isRecording);
+  const recordings = useRecordingStore(s => s.recordings);
 
-export async function startSystemAudioCapture(): Promise<void> {
-  await SystemAudioMacOS.startCapture();
-}
-
-export async function stopSystemAudioCapture(): Promise<string> {
-  const uri = await SystemAudioMacOS.stopCapture();
-  return uri;
-}
-
-export async function checkScreenRecordingPermission(): Promise<boolean> {
-  return await SystemAudioMacOS.checkPermission();
+  return (
+    <View style={{ flex: 1 }}>
+      <Text>Recording App (Electron)</Text>
+      <RecordButton isRecording={isRecording} onPress={() => {}} />
+      <RecordingsList recordings={recordings} />
+    </View>
+  );
 }
 ```
 
-## Data Flow
+### 4. Native Modules Layer
 
-### Recording Flow (Microphone)
+#### ScreenCaptureKit Node.js Addon
+
+See [modules/electron-screencapturekit/README.md](../modules/electron-screencapturekit/README.md) for full implementation.
+
+**Key Points:**
+- Written in C++/Objective-C++ using Node-API
+- Wraps macOS ScreenCaptureKit framework
+- Exposes async methods to JavaScript
+- Handles audio stream capture and file writing
+
+## Data Flow Examples
+
+### Recording Flow (iOS)
 
 ```
-User taps "Record" button
+User Taps "Record"
     ↓
 RecordButton.onPress()
     ↓
 useRecording.startRecording()
     ↓
-AudioService.requestPermission()
+audioService.startRecording('microphone')
     ↓
-[Permission granted]
+ExpoAudioAdapter.startRecording()
+    ↓
+expo-audio: AudioModule.requestRecordingPermissionsAsync()
+    ↓
+[Permission Granted]
+    ↓
+setAudioModeAsync({ allowsRecording: true })
     ↓
 recorder.prepareToRecordAsync()
     ↓
 recorder.record()
     ↓
-[Recording in progress]
+useRecordingStore.setIsRecording(true)
     ↓
-useAudioRecorderState() updates UI
+[Recording in Progress]
     ↓
-User taps "Stop"
+useAudioRecorderState() updates UI every 500ms
     ↓
-useRecording.stopRecording()
+User Taps "Stop"
     ↓
 recorder.stop()
     ↓
-Get recorder.uri
-    ↓
-StorageService.saveRecording(uri, metadata)
+Save file: storageService.saveRecording(recorder.uri)
     ↓
 useRecordingStore.addRecording(recording)
     ↓
 UI updates with new recording
 ```
 
-### Loading Recordings Flow
+### System Audio Flow (macOS/Electron)
 
 ```
-App launches
+User Clicks "Record System Audio"
     ↓
-RecordingsScreen mounts
+RecordButton.onPress()
     ↓
-useEffect(() => loadRecordings(), [])
+audioService.startRecording('system')
     ↓
-useRecordingStore.loadRecordings()
+ElectronAudioAdapter.startRecording('system')
     ↓
-StorageService.loadRecordings()
+window.electron.audio.checkPermission()
     ↓
-Read metadata from AsyncStorage
+[If not granted]
     ↓
-Verify files exist
+window.electron.audio.requestPermission()
     ↓
-Return Recording[]
+[Opens System Preferences]
     ↓
-useRecordingStore.setRecordings(recordings)
+User grants permission
     ↓
-UI renders list
+window.electron.audio.startSystemCapture()
+    ↓
+IPC: Main Process receives request
+    ↓
+MacOSAudioCapture.start()
+    ↓
+Native Addon: screencapturekit.start()
+    ↓
+ScreenCaptureKit: SCStream starts
+    ↓
+Audio samples streamed to file
+    ↓
+User Clicks "Stop"
+    ↓
+window.electron.audio.stopSystemCapture()
+    ↓
+Native Addon: screencapturekit.stop()
+    ↓
+Returns file path via IPC
+    ↓
+storageService.saveRecording(filePath)
+    ↓
+useRecordingStore.addRecording(recording)
+    ↓
+UI updates
 ```
 
-## Error Handling
+## Monorepo Setup
 
-### Error Boundaries
+### pnpm Workspaces
 
-```typescript
-// app/_layout.tsx
-export default function RootLayout() {
-  return (
-    <ErrorBoundary fallback={ErrorFallback}>
-      <Stack />
-    </ErrorBoundary>
-  );
-}
-
-function ErrorFallback({ error, resetError }: ErrorBoundaryProps) {
-  return (
-    <View>
-      <Text>Something went wrong!</Text>
-      <Text>{error.message}</Text>
-      <Button title="Try again" onPress={resetError} />
-    </View>
-  );
-}
+**pnpm-workspace.yaml**
+```yaml
+packages:
+  - 'packages/*'
+  - 'native-modules/*'
 ```
 
-### Service-Level Error Handling
-
-```typescript
-class AudioServiceError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public recoverable: boolean = true
-  ) {
-    super(message);
-    this.name = 'AudioServiceError';
+**Root package.json**
+```json
+{
+  "name": "recording-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
   }
 }
+```
 
-export class AudioService {
-  static async startRecording() {
-    try {
-      // ... recording logic
-    } catch (error) {
-      if (error.code === 'E_PERMISSION_DENIED') {
-        throw new AudioServiceError(
-          'Microphone permission denied',
-          'PERMISSION_DENIED',
-          true // User can grant permission
-        );
-      }
-      throw new AudioServiceError(
-        'Failed to start recording',
-        'RECORDING_FAILED',
-        false
-      );
+### Turborepo Configuration
+
+**turbo.json**
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "build/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
     }
   }
 }
 ```
 
-### Hook-Level Error Handling
+### Package Dependencies
 
-```typescript
-export function useRecording() {
-  const [error, setError] = useState<AudioServiceError | null>(null);
-
-  const startRecording = async () => {
-    try {
-      setError(null);
-      await AudioService.startRecording();
-    } catch (err) {
-      setError(err as AudioServiceError);
-
-      if (err.recoverable) {
-        // Show actionable error message
-        Alert.alert(
-          'Permission Required',
-          err.message,
-          [{ text: 'Open Settings', onPress: openSettings }]
-        );
-      } else {
-        // Show generic error
-        Alert.alert('Error', err.message);
-      }
-    }
-  };
-
-  return { startRecording, error };
+**packages/mobile/package.json**
+```json
+{
+  "name": "@recording-app/mobile",
+  "version": "0.1.0",
+  "dependencies": {
+    "expo": "~54.0.0",
+    "expo-audio": "~14.0.0",
+    "expo-router": "~4.0.0",
+    "expo-file-system": "~18.0.0",
+    "@recording-app/shared": "workspace:*"
+  }
 }
 ```
 
-## Performance Considerations
+**packages/desktop/package.json**
+```json
+{
+  "name": "@recording-app/desktop",
+  "version": "0.1.0",
+  "dependencies": {
+    "electron": "^32.0.0",
+    "@electron/remote": "^2.1.2",
+    "@recording-app/shared": "workspace:*",
+    "@recording-app/electron-screencapturekit": "workspace:*"
+  }
+}
+```
 
-### 1. Lazy Loading
+**packages/shared/package.json**
+```json
+{
+  "name": "@recording-app/shared",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "react-native-web": "~0.19.0",
+    "zustand": "^5.0.0"
+  }
+}
+```
+
+## Design Patterns
+
+### 1. Adapter Pattern (Platform Abstraction)
+
+Different platforms → Same interface
+
 ```typescript
-// Lazy load heavy components
-const AudioVisualizer = lazy(() => import('@/features/recording/components/AudioVisualizer'));
+interface AudioServiceInterface {
+  startRecording(mode: RecordingMode): Promise<void>;
+  stopRecording(): Promise<string>;
+  // ...
+}
+
+class ExpoAudioAdapter implements AudioServiceInterface { /* iOS */ }
+class ElectronAudioAdapter implements AudioServiceInterface { /* Desktop */ }
+
+// Usage
+const adapter = isElectron()
+  ? new ElectronAudioAdapter()
+  : new ExpoAudioAdapter();
+```
+
+### 2. State Machine Pattern (Recording States)
+
+```typescript
+type RecordingState =
+  | { status: 'idle' }
+  | { status: 'requesting-permission' }
+  | { status: 'preparing' }
+  | { status: 'recording'; startTime: number }
+  | { status: 'stopping' }
+  | { status: 'error'; error: Error };
+
+function recordingReducer(
+  state: RecordingState,
+  action: RecordingAction
+): RecordingState {
+  switch (state.status) {
+    case 'idle':
+      if (action.type === 'START_REQUESTED') {
+        return { status: 'requesting-permission' };
+      }
+      break;
+
+    case 'requesting-permission':
+      if (action.type === 'PERMISSION_GRANTED') {
+        return { status: 'preparing' };
+      }
+      if (action.type === 'PERMISSION_DENIED') {
+        return { status: 'error', error: new Error('Permission denied') };
+      }
+      break;
+
+    case 'preparing':
+      if (action.type === 'RECORDING_STARTED') {
+        return { status: 'recording', startTime: Date.now() };
+      }
+      break;
+
+    case 'recording':
+      if (action.type === 'STOP_REQUESTED') {
+        return { status: 'stopping' };
+      }
+      break;
+
+    case 'stopping':
+      if (action.type === 'STOPPED') {
+        return { status: 'idle' };
+      }
+      break;
+  }
+
+  return state;
+}
+```
+
+### 3. Repository Pattern (Data Access)
+
+```typescript
+interface RecordingRepository {
+  findAll(): Promise<Recording[]>;
+  findById(id: string): Promise<Recording | null>;
+  create(recording: Omit<Recording, 'id'>): Promise<Recording>;
+  update(id: string, data: Partial<Recording>): Promise<Recording>;
+  delete(id: string): Promise<void>;
+}
+
+class FileSystemRecordingRepository implements RecordingRepository {
+  // Platform-specific implementation
+}
+```
+
+### 4. Observer Pattern (Real-time Updates)
+
+Zustand provides this out of the box:
+
+```typescript
+// Component A
+const recordings = useRecordingStore(s => s.recordings);
+
+// Component B adds recording
+const addRecording = useRecordingStore(s => s.addRecording);
+addRecording(newRecording);
+
+// Component A automatically re-renders with new data
+```
+
+## Performance Optimizations
+
+### 1. Code Splitting (Electron)
+
+```typescript
+// Lazy load heavy dependencies
+const SystemAudioModule = lazy(() => import('./SystemAudioModule'));
+
+function RecordingApp() {
+  return (
+    <Suspense fallback={<Loading />}>
+      {isMacOS() && <SystemAudioModule />}
+    </Suspense>
+  );
+}
 ```
 
 ### 2. Memoization
+
 ```typescript
 const RecordingItem = memo(({ recording, onDelete }: Props) => {
-  // Component implementation
+  return (
+    <View>
+      <Text>{recording.title}</Text>
+      <Button onPress={onDelete}>Delete</Button>
+    </View>
+  );
 });
 
-const memoizedRecordings = useMemo(
-  () => recordings.filter(r => r.duration > 10),
+// Prevent re-renders
+const sortedRecordings = useMemo(
+  () => recordings.sort((a, b) => b.createdAt - a.createdAt),
   [recordings]
 );
 ```
 
 ### 3. Virtualized Lists
+
 ```typescript
+import { FlashList } from '@shopify/flash-list';
+
 <FlashList
   data={recordings}
   estimatedItemSize={80}
-  renderItem={renderRecordingItem}
+  renderItem={({ item }) => <RecordingItem recording={item} />}
 />
 ```
 
-### 4. Debouncing/Throttling
-```typescript
-const debouncedSearch = useMemo(
-  () => debounce(searchRecordings, 300),
-  []
-);
+### 4. Turborepo Caching
+
+Turbo caches build outputs across all packages:
+```bash
+# First build: slow
+pnpm build
+
+# Second build: instant (cached)
+pnpm build
 ```
-
-## Security Considerations
-
-### 1. Permission Handling
-- Request permissions at appropriate time
-- Clear explanation of why permission is needed
-- Graceful degradation if permission denied
-
-### 2. File Storage
-- Store recordings in app sandbox (documentDirectory)
-- No external storage without user consent
-- Secure deletion when removing recordings
-
-### 3. Data Privacy
-- No analytics without user consent
-- No automatic cloud upload
-- Clear data retention policy
 
 ## Testing Strategy
 
-### Unit Tests
+### Unit Tests (Jest + React Testing Library)
+
 ```typescript
-// audioService.test.ts
-describe('AudioService', () => {
-  it('should request permission', async () => {
-    const granted = await AudioService.requestPermission();
-    expect(granted).toBe(true);
+// packages/shared/src/features/recording/__tests__/RecordButton.test.tsx
+import { render, fireEvent } from '@testing-library/react-native';
+import { RecordButton } from '../components/RecordButton';
+
+describe('RecordButton', () => {
+  it('calls onPress when pressed', () => {
+    const onPress = jest.fn();
+    const { getByRole } = render(
+      <RecordButton onPress={onPress} isRecording={false} />
+    );
+
+    fireEvent.press(getByRole('button'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows recording state', () => {
+    const { getByRole } = render(
+      <RecordButton onPress={() => {}} isRecording={true} />
+    );
+
+    const button = getByRole('button');
+    expect(button.props.style).toContainEqual(
+      expect.objectContaining({ backgroundColor: '#EF4444' })
+    );
   });
 });
 ```
 
 ### Integration Tests
+
 ```typescript
-// recording.integration.test.ts
+// Test recording flow end-to-end
 describe('Recording Flow', () => {
   it('should record and save audio', async () => {
     const { result } = renderHook(() => useRecording());
 
     await act(async () => {
-      await result.current.startRecording();
+      await result.current.startRecording('microphone');
     });
 
     expect(result.current.isRecording).toBe(true);
@@ -857,49 +1241,29 @@ describe('Recording Flow', () => {
 });
 ```
 
-### Component Tests
-```typescript
-// RecordButton.test.tsx
-describe('RecordButton', () => {
-  it('should call onPress when pressed', () => {
-    const onPress = jest.fn();
-    const { getByRole } = render(
-      <RecordButton onPress={onPress} isRecording={false} />
-    );
+## Security Considerations
 
-    fireEvent.press(getByRole('button'));
-    expect(onPress).toHaveBeenCalledTimes(1);
-  });
-});
-```
+### 1. Electron Security
 
-## Build & Deployment
+- ✅ Context isolation enabled
+- ✅ Node integration disabled in renderer
+- ✅ Preload script for controlled IPC
+- ✅ CSP headers configured
 
-### Development Build
-```bash
-# iOS Simulator
-eas build --profile development --platform ios --local
+### 2. Permissions
 
-# Physical device
-eas build --profile development --platform ios
-```
+- Request permissions at appropriate time
+- Clear explanation of usage
+- Graceful degradation if denied
 
-### Production Build
-```bash
-# Create production build
-eas build --profile production --platform ios
+### 3. File Storage
 
-# Submit to App Store
-eas submit --platform ios
-```
-
-### Over-the-Air Updates
-```bash
-# Publish update
-eas update --branch production --message "Bug fixes"
-```
+- App sandbox for recordings
+- No external access without user consent
+- Secure deletion
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 2.0 (REVISED)
 **Last Updated**: 2025-01-05
+**Architecture**: Electron + React Native Web (Desktop) + Expo (iOS)

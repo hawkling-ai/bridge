@@ -1,573 +1,859 @@
-# Recording App - Implementation Plan
+# Recording App - Implementation Plan (REVISED)
 
 ## Overview
-A cross-platform audio recording application for macOS and iOS built with React Native and Expo, supporting microphone recording on both platforms and system audio capture on macOS via native modules.
+A cross-platform audio recording application built with **Electron + React Native Web** (desktop) and **React Native/Expo** (iOS), maximizing code sharing while supporting microphone recording on both platforms and system audio capture on macOS.
+
+## Architecture Decision
+
+### Shared Web View Approach
+- **Desktop (macOS/Windows/Linux)**: Electron + React Native Web
+- **Mobile (iOS)**: React Native + Expo
+- **Shared Code**: ~80-90% code reuse via React Native Web
+- **Platform-Specific**: Native audio modules for each platform
+
+### Why This Architecture?
+1. **Maximum Code Reuse**: UI, business logic, and state management shared
+2. **Native Performance**: Native audio modules where needed
+3. **Single Team**: One codebase, one team
+4. **Familiar Stack**: React/TypeScript everywhere
 
 ## Technology Stack
 
 ### Core Framework
-- **React Native**: 0.76.x
-- **Expo SDK**: 52 (latest as of January 2025)
+- **React**: 18.3.x
+- **React Native**: 0.76.x (for iOS)
+- **React Native Web**: 0.19.x (for Electron)
+- **Electron**: 32.x (for desktop)
+- **Expo SDK**: 54 (latest - Feb 2025, expo-av removed)
 - **TypeScript**: 5.3+ (strict mode)
-- **Node**: 18+ LTS
+- **Node.js**: 20+ LTS
 
 ### Key Libraries
-| Library | Version | Purpose |
-|---------|---------|---------|
-| `expo-audio` | ~14.0.0 | Modern audio recording API (replaces deprecated expo-av) |
-| `expo-router` | ~4.0.0 | File-based navigation with typed routes |
-| `expo-file-system` | ~18.0.0 | Audio file storage and management |
-| `zustand` | ^5.0.0 | Lightweight state management |
-| `react-native` | 0.76.5 | Core RN framework with New Architecture |
+| Library | Version | Purpose | Platform |
+|---------|---------|---------|----------|
+| `expo-audio` | ~14.0.0 | Audio recording (iOS) | iOS only |
+| `electron` | ^32.0.0 | Desktop wrapper | Desktop |
+| `react-native-web` | ~0.19.0 | Web compatibility | Desktop |
+| `zustand` | ^5.0.0 | State management | All |
+| `@electron/remote` | ^2.1.0 | IPC communication | Desktop |
 
 ### Development Tools
-- **EAS CLI**: For builds and deployments
+- **Vite**: Fast bundler for Electron renderer
+- **EAS CLI**: For iOS builds
 - **TypeScript**: Strict mode with path aliases
-- **Jest**: Testing framework (future phase)
-- **ESLint/Prettier**: Code quality (future phase)
+- **Jest + React Testing Library**: Testing
+
+## Critical API Updates
+
+### expo-av is DEPRECATED ⚠️
+- **SDK 52**: expo-audio introduced (beta)
+- **SDK 53**: expo-audio stable
+- **SDK 54**: expo-av **completely removed** from Expo Go
+- **Migration Required**: Use `expo-audio` for all new projects
+
+### expo-audio vs expo-av
+
+| Feature | expo-av (OLD) | expo-audio (NEW) |
+|---------|---------------|------------------|
+| API Style | Class-based | Hooks-based |
+| Recording | `Audio.Recording.createAsync()` | `useAudioRecorder()` |
+| Permissions | `Audio.usePermissions()` | `AudioModule.requestRecordingPermissionsAsync()` |
+| Status Updates | Callback-based | `useAudioRecorderState()` hook |
+| Lifecycle | Manual cleanup | Automatic via hooks |
+| Status | **Deprecated** | **Current** |
 
 ## Platform Support
 
-### iOS (17.0+)
-- ✅ Microphone recording via expo-audio
+### iOS (17.0+) - React Native + Expo
+- ✅ Microphone recording via **expo-audio**
 - ✅ Background audio recording (UIBackgroundModes)
-- ❌ System audio capture (impossible due to Apple security restrictions)
+- ❌ System audio capture (impossible - Apple security)
 - ✅ Audio format: .m4a (AAC, HIGH_QUALITY preset)
+- ✅ Built with EAS Build
 
-### macOS (14.0+)
-- ✅ Microphone recording via expo-audio
-- 🔄 System audio capture via ScreenCaptureKit (Phase 2 - native module)
-- ✅ Audio format: .m4a (AAC)
-- ⚠️ Requires screen recording permission
+### macOS Desktop - Electron
+- ✅ Microphone recording via Web Audio API / node-mic
+- ✅ System audio capture via **ScreenCaptureKit** (Node.js addon)
+- ✅ Audio format: .m4a (AAC) or .webm
+- ⚠️ Requires screen recording permission (user must enable in System Preferences)
+- ✅ Electron packager for distribution
+
+### Windows Desktop - Electron (Future)
+- ✅ Microphone recording via Web Audio API
+- 🔄 System audio capture via WASAPI (Node.js addon)
+- ✅ Audio format: .webm
+
+### Linux Desktop - Electron (Future)
+- ✅ Microphone recording via Web Audio API
+- 🔄 System audio capture via PulseAudio (Node.js addon)
+- ✅ Audio format: .webm
 
 ## Project Structure
 
 ```
-RecordingApp/
-├── app/                              # Expo Router - File-based routing
-│   ├── (tabs)/                       # Tab group
-│   │   ├── _layout.tsx              # Tab navigator configuration
-│   │   ├── index.tsx                # Home/Recording screen
-│   │   └── recordings.tsx           # Recordings library screen
-│   ├── _layout.tsx                  # Root layout (providers, theme)
-│   └── +not-found.tsx               # 404 fallback
-│
-├── src/                              # Source code
-│   ├── features/                     # Feature modules
-│   │   └── recording/
-│   │       ├── components/
-│   │       │   ├── RecordButton.tsx          # Record/Stop button
-│   │       │   ├── RecordingTimer.tsx        # Duration display
-│   │       │   └── AudioVisualizer.tsx       # Waveform (future)
-│   │       ├── hooks/
-│   │       │   ├── useRecording.ts           # Recording logic
-│   │       │   └── useAudioPermissions.ts    # Permission handling
-│   │       ├── store/
-│   │       │   └── recordingStore.ts         # Zustand state
-│   │       └── types/
-│   │           └── recording.types.ts        # TypeScript types
+recording-app/                         # Monorepo root
+├── packages/
+│   ├── mobile/                        # iOS React Native app
+│   │   ├── app/                       # Expo Router
+│   │   │   ├── (tabs)/
+│   │   │   │   ├── _layout.tsx
+│   │   │   │   ├── index.tsx          # Recording screen
+│   │   │   │   └── recordings.tsx     # Recordings list
+│   │   │   └── _layout.tsx
+│   │   ├── app.json                   # Expo config
+│   │   ├── package.json
+│   │   └── tsconfig.json
 │   │
-│   ├── services/                     # Business logic services
-│   │   ├── audioService.ts          # Audio recording wrapper
-│   │   └── storageService.ts        # File system operations
+│   ├── desktop/                       # Electron app
+│   │   ├── src/
+│   │   │   ├── main/                  # Electron main process
+│   │   │   │   ├── index.ts           # Main entry
+│   │   │   │   ├── ipc.ts             # IPC handlers
+│   │   │   │   └── audio/             # Native audio modules
+│   │   │   │       ├── macos-screencapturekit.node  # Native addon
+│   │   │   │       └── binding.ts     # Node binding
+│   │   │   ├── renderer/              # Electron renderer (React)
+│   │   │   │   └── index.tsx          # Uses shared code
+│   │   │   └── preload.ts             # Preload script
+│   │   ├── electron-builder.json      # Packaging config
+│   │   ├── package.json
+│   │   └── vite.config.ts             # Vite for renderer
 │   │
-│   ├── shared/                       # Shared resources
-│   │   ├── components/              # Reusable UI components
-│   │   ├── hooks/                   # Common hooks
-│   │   ├── utils/                   # Utility functions
-│   │   └── constants/               # App constants
+│   └── shared/                        # Shared code (80-90% of app)
+│       ├── src/
+│       │   ├── features/              # Feature modules
+│       │   │   └── recording/
+│       │   │       ├── components/
+│       │   │       │   ├── RecordButton.tsx
+│       │   │       │   ├── RecordingTimer.tsx
+│       │   │       │   └── RecordingsList.tsx
+│       │   │       ├── hooks/
+│       │   │       │   ├── useRecording.ts
+│       │   │       │   └── useRecordingPermissions.ts
+│       │   │       ├── store/
+│       │   │       │   └── recordingStore.ts    # Zustand
+│       │   │       └── types/
+│       │   │           └── recording.types.ts
+│       │   ├── services/              # Platform-agnostic services
+│       │   │   ├── audioService.ts    # Audio interface
+│       │   │   └── storageService.ts  # File operations
+│       │   ├── components/            # Shared UI
+│       │   ├── utils/
+│       │   └── types/
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── native-modules/                    # Native code
+│   ├── electron-screencapturekit/     # Node.js addon for macOS
+│   │   ├── src/
+│   │   │   ├── screencapture.mm       # Objective-C++
+│   │   │   └── binding.cpp            # Node-API binding
+│   │   ├── binding.gyp
+│   │   └── package.json
 │   │
-│   └── types/                        # Global TypeScript types
-│       └── index.ts
+│   └── expo-system-audio/             # iOS module (if needed beyond expo-audio)
+│       └── ...
 │
-├── modules/                          # Native modules
-│   └── system-audio-macos/         # macOS ScreenCaptureKit module
-│       ├── ios/                     # Native Swift code (Phase 2)
-│       ├── src/                     # JS/TS bridge
-│       ├── expo-module.config.json
-│       └── README.md               # Implementation guide
-│
-├── assets/                          # Static assets
-│   ├── images/
-│   └── fonts/
-│
-├── docs/                            # Documentation
+├── docs/                              # Documentation
 │   ├── ARCHITECTURE.md
-│   ├── NATIVE_MODULE_GUIDE.md
-│   └── API.md
+│   ├── ELECTRON_SETUP.md
+│   └── IOS_SETUP.md
 │
-├── app.json                         # Expo configuration
-├── eas.json                         # EAS Build configuration
-├── tsconfig.json                    # TypeScript configuration
-├── package.json                     # Dependencies
-├── .gitignore                       # Git ignore
-└── README.md                        # Project documentation
+├── package.json                       # Root package.json
+├── pnpm-workspace.yaml                # PNPM workspaces
+└── turbo.json                         # Turborepo config
 ```
+
+## Real expo-audio Implementation (iOS)
+
+### Official Example (from Expo docs)
+
+```typescript
+import { useState, useEffect } from 'react';
+import { View, StyleSheet, Button, Alert } from 'react-native';
+import {
+  useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorderState,
+} from 'expo-audio';
+
+export default function RecordingScreen() {
+  // Create recorder with HIGH_QUALITY preset
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Get real-time recording state
+  const recorderState = useAudioRecorderState(audioRecorder);
+
+  const record = async () => {
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+  };
+
+  const stopRecording = async () => {
+    await audioRecorder.stop();
+    // Recording available at: audioRecorder.uri
+    console.log('Recorded file:', audioRecorder.uri);
+  };
+
+  useEffect(() => {
+    (async () => {
+      // Request permission
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        Alert.alert('Permission to access microphone was denied');
+        return;
+      }
+
+      // Configure audio mode for recording
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true,
+      });
+    })();
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <Button
+        title={recorderState.isRecording ? 'Stop Recording' : 'Start Recording'}
+        onPress={recorderState.isRecording ? stopRecording : record}
+      />
+      {recorderState.isRecording && (
+        <Text>Duration: {Math.round(recorderState.durationMillis / 1000)}s</Text>
+      )}
+    </View>
+  );
+}
+```
+
+### Key API Details
+
+**useAudioRecorder Hook:**
+```typescript
+const recorder = useAudioRecorder(
+  RecordingPresets.HIGH_QUALITY,  // or LOW_QUALITY, or custom options
+  (status) => console.log(status)  // Optional status listener
+);
+
+// Properties:
+recorder.uri              // string | null - recorded file URI
+recorder.isRecording      // boolean
+recorder.durationMillis   // number
+
+// Methods:
+await recorder.prepareToRecordAsync()  // Must call before record()
+recorder.record()                       // Start recording
+await recorder.stop()                   // Stop and finalize
+```
+
+**useAudioRecorderState Hook:**
+```typescript
+const state = useAudioRecorderState(recorder, 500);  // Poll every 500ms
+
+// State object:
+state.isRecording      // boolean
+state.durationMillis   // number
+state.canRecord        // boolean
+```
+
+**Permissions:**
+```typescript
+// Request
+const { granted, canAskAgain, status } =
+  await AudioModule.requestRecordingPermissionsAsync();
+
+// Check
+const { granted, status } =
+  await AudioModule.getRecordingPermissionsAsync();
+```
+
+**Audio Mode:**
+```typescript
+await setAudioModeAsync({
+  allowsRecording: true,              // Enable recording
+  playsInSilentMode: true,            // Play in silent mode
+  shouldPlayInBackground: true,       // Background playback (optional)
+  staysActiveInBackground: true,      // Background recording (optional)
+});
+```
+
+## Electron Implementation (Desktop)
+
+### Main Process (Node.js)
+
+```typescript
+// packages/desktop/src/main/index.ts
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { MacOSAudioCapture } from './audio/macos-capture';
+
+let audioCapture: MacOSAudioCapture | null = null;
+
+// IPC Handlers
+ipcMain.handle('audio:checkPermission', async () => {
+  if (process.platform === 'darwin') {
+    return MacOSAudioCapture.checkScreenRecordingPermission();
+  }
+  return true;
+});
+
+ipcMain.handle('audio:startSystemCapture', async (event, options) => {
+  if (process.platform !== 'darwin') {
+    throw new Error('System audio only supported on macOS');
+  }
+
+  audioCapture = new MacOSAudioCapture(options);
+  await audioCapture.start();
+});
+
+ipcMain.handle('audio:stopSystemCapture', async () => {
+  if (!audioCapture) return null;
+
+  const filePath = await audioCapture.stop();
+  audioCapture = null;
+  return filePath;
+});
+```
+
+### Renderer Process (React Native Web)
+
+```typescript
+// packages/desktop/src/renderer/hooks/useSystemAudio.ts
+import { useState } from 'react';
+
+export function useSystemAudio() {
+  const [isRecording, setIsRecording] = useState(false);
+
+  const startCapture = async () => {
+    const hasPermission = await window.electron.audio.checkPermission();
+
+    if (!hasPermission) {
+      // Guide user to System Preferences
+      alert('Please enable Screen Recording in System Preferences');
+      return;
+    }
+
+    await window.electron.audio.startSystemCapture({
+      source: 'display',  // or 'window', 'application'
+      quality: 'high',
+    });
+
+    setIsRecording(true);
+  };
+
+  const stopCapture = async () => {
+    const filePath = await window.electron.audio.stopSystemCapture();
+    setIsRecording(false);
+    return filePath;
+  };
+
+  return { isRecording, startCapture, stopCapture };
+}
+```
+
+### Preload Script
+
+```typescript
+// packages/desktop/src/preload.ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('electron', {
+  audio: {
+    checkPermission: () => ipcRenderer.invoke('audio:checkPermission'),
+    startSystemCapture: (options) =>
+      ipcRenderer.invoke('audio:startSystemCapture', options),
+    stopSystemCapture: () =>
+      ipcRenderer.invoke('audio:stopSystemCapture'),
+  },
+});
+```
+
+## Shared Code Strategy
+
+### Platform Detection
+
+```typescript
+// packages/shared/src/utils/platform.ts
+export const isElectron = () => {
+  return typeof window !== 'undefined' &&
+         (window as any).electron !== undefined;
+};
+
+export const isNative = () => {
+  return !isElectron() &&
+         typeof navigator !== 'undefined' &&
+         navigator.product === 'ReactNative';
+};
+
+export const isIOS = () => {
+  return isNative() && Platform.OS === 'ios';
+};
+
+export const isMacOS = () => {
+  return isElectron() && process.platform === 'darwin';
+};
+```
+
+### Unified Audio Service
+
+```typescript
+// packages/shared/src/services/audioService.ts
+import { isElectron, isIOS } from '../utils/platform';
+
+export class AudioService {
+  static async startRecording(mode: 'microphone' | 'system') {
+    if (mode === 'system') {
+      if (!isElectron()) {
+        throw new Error('System audio only available on desktop');
+      }
+
+      if (process.platform === 'darwin') {
+        return window.electron.audio.startSystemCapture({
+          source: 'display',
+        });
+      }
+    }
+
+    if (mode === 'microphone') {
+      if (isIOS()) {
+        // Use expo-audio (in mobile app)
+        const { useRecording } = await import('@mobile/hooks/useRecording');
+        return useRecording();
+      }
+
+      if (isElectron()) {
+        // Use Web Audio API or node-mic
+        return window.electron.audio.startMicrophoneCapture();
+      }
+    }
+  }
+
+  static async stopRecording() {
+    // Platform-specific stop logic
+  }
+}
+```
+
+### Shared Components
+
+```tsx
+// packages/shared/src/features/recording/components/RecordButton.tsx
+import { TouchableOpacity, View, Text } from 'react-native';
+
+interface RecordButtonProps {
+  isRecording: boolean;
+  onPress: () => void;
+}
+
+export function RecordButton({ isRecording, onPress }: RecordButtonProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: isRecording ? '#EF4444' : '#3B82F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <View style={{
+        width: isRecording ? 30 : 0,
+        height: isRecording ? 30 : 0,
+        backgroundColor: '#fff',
+        borderRadius: isRecording ? 4 : 0,
+      }} />
+    </TouchableOpacity>
+  );
+}
+```
+
+**This component works in:**
+- ✅ React Native (iOS)
+- ✅ React Native Web (Electron)
+- ✅ Zero changes needed
 
 ## Implementation Phases
 
-### Phase 1: Minimal Scaffold (Current)
-**Goal**: Basic project structure with microphone recording
+### Phase 1: Setup & Scaffolding (Week 1)
+**Goals:**
+- Monorepo setup (pnpm workspaces + turborepo)
+- Shared package with basic UI
+- iOS app with expo-audio recording
+- Electron app shell
 
-**Deliverables**:
-1. Project initialization with Expo SDK 52
-2. Folder structure setup
-3. Configuration files (app.json, tsconfig.json, eas.json)
-4. Basic recording hook using expo-audio
-5. Simple UI (RecordButton component)
-6. File storage service (stub)
-7. Documentation (PLAN.md, README.md, ARCHITECTURE.md)
+**Deliverables:**
+1. Monorepo structure
+2. TypeScript configs
+3. Basic recording UI (shared component)
+4. iOS microphone recording working
+5. Electron app launches
 
-**Timeline**: 1-2 days
+### Phase 2: Core Features (Weeks 2-3)
+**Goals:**
+- File storage (both platforms)
+- Recordings list
+- Playback
+- State management (Zustand)
 
-### Phase 2: Microphone Recording Implementation
-**Goal**: Fully functional microphone recording on iOS/macOS
+**Deliverables:**
+1. `storageService.ts` (platform-agnostic)
+2. `recordingStore.ts` (Zustand store)
+3. Recordings list component
+4. Audio playback
+5. Delete recordings
 
-**Deliverables**:
-1. Complete audioService with expo-audio
-2. Permission handling (iOS/macOS)
-3. Recording state management (Zustand store)
-4. File storage implementation
-5. Recording list UI
-6. Basic playback functionality
-7. Error handling
+### Phase 3: macOS System Audio (Weeks 4-5)
+**Goals:**
+- Node.js native addon for ScreenCaptureKit
+- Permission handling
+- Source selection (display/window/app)
 
-**Timeline**: 1 week
+**Deliverables:**
+1. `electron-screencapturekit` Node.js addon
+2. IPC bridge to renderer
+3. Permission UI flow
+4. Source picker UI
+5. macOS system audio capture working
 
-### Phase 3: macOS System Audio (Native Module)
-**Goal**: ScreenCaptureKit integration for macOS system audio
+### Phase 4: Polish (Week 6)
+**Goals:**
+- UI/UX refinement
+- Error handling
+- Testing
+- App icons
 
-**Deliverables**:
-1. Expo native module setup
-2. Swift implementation using ScreenCaptureKit
-3. React Native bridge (JSI/TurboModules)
-4. Screen recording permission flow
-5. Platform detection and fallback logic
-6. Build configuration for native module
-7. Testing on macOS
+**Deliverables:**
+1. Waveform visualization
+2. Error boundaries
+3. Unit tests
+4. E2E tests
+5. App packaging
 
-**Timeline**: 2-3 weeks
+## Dependencies
 
-### Phase 4: Polish & Features
-**Goal**: Production-ready app
-
-**Deliverables**:
-1. Audio waveform visualization
-2. Recording editing (trim, rename, etc.)
-3. Export/share functionality
-4. Settings screen
-5. Comprehensive testing
-6. App icons and splash screens
-7. App Store preparation
-
-**Timeline**: 2-3 weeks
-
-## Technical Architecture
-
-### Audio Recording Flow
-
-#### Microphone Recording (iOS/macOS - Phase 1-2)
-```
-User taps Record
-    ↓
-Check microphone permission
-    ↓
-Request if not granted
-    ↓
-Configure audio mode (setAudioModeAsync)
-    ↓
-Initialize recorder (useAudioRecorder hook)
-    ↓
-prepareToRecordAsync() → record()
-    ↓
-Monitor recording state (useAudioRecorderState)
-    ↓
-User taps Stop → stop()
-    ↓
-Get recording URI
-    ↓
-Save to document directory (FileSystem.moveAsync)
-    ↓
-Add to Zustand store
-    ↓
-Update UI
-```
-
-#### System Audio Recording (macOS - Phase 3)
-```
-User selects "System Audio" mode
-    ↓
-Check screen recording permission (macOS)
-    ↓
-Request if not granted (System Preferences)
-    ↓
-Initialize ScreenCaptureKit native module
-    ↓
-Configure capture (audio only, specific app/window/display)
-    ↓
-Start capture stream
-    ↓
-Bridge audio data to JS
-    ↓
-Write to file
-    ↓
-Stop capture → save file
-    ↓
-Add to Zustand store
-```
-
-### State Management Strategy
-
-#### Zustand Store Structure
-```typescript
-interface RecordingStore {
-  // State
-  recordings: Recording[];
-  currentRecording: Recording | null;
-  isRecording: boolean;
-  recordingMode: 'microphone' | 'system'; // Phase 3
-
-  // Actions
-  addRecording: (recording: Recording) => void;
-  removeRecording: (id: string) => void;
-  updateRecording: (id: string, data: Partial<Recording>) => void;
-  setCurrentRecording: (recording: Recording | null) => void;
-  setRecordingMode: (mode: 'microphone' | 'system') => void;
-
-  // Async actions
-  loadRecordings: () => Promise<void>;
-  deleteRecording: (id: string) => Promise<void>;
+### Shared Package
+```json
+{
+  "dependencies": {
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "react-native-web": "~0.19.0",
+    "zustand": "^5.0.0",
+    "date-fns": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/react": "^18.3.12"
+  }
 }
 ```
 
-### File Storage Strategy
-
-**Location**: `FileSystem.documentDirectory + 'recordings/'`
-
-**Naming Convention**: `recording_${timestamp}_${uuid}.m4a`
-
-**Metadata**: Stored in Zustand + AsyncStorage for persistence
-```typescript
-interface Recording {
-  id: string;
-  filename: string;
-  title: string; // User-editable
-  duration: number; // seconds
-  size: number; // bytes
-  createdAt: number; // timestamp
-  recordingMode: 'microphone' | 'system';
-  uri: string;
+### Mobile Package (iOS)
+```json
+{
+  "dependencies": {
+    "expo": "~54.0.0",
+    "expo-audio": "~14.0.0",
+    "expo-router": "~4.0.0",
+    "expo-file-system": "~18.0.0",
+    "@recording-app/shared": "workspace:*"
+  }
 }
 ```
 
-## Configuration Details
+### Desktop Package (Electron)
+```json
+{
+  "dependencies": {
+    "electron": "^32.0.0",
+    "@electron/remote": "^2.1.2",
+    "vite": "^5.0.0",
+    "@recording-app/shared": "workspace:*",
+    "@recording-app/electron-screencapturekit": "workspace:*"
+  }
+}
+```
 
-### app.json
+### Native Module (macOS ScreenCaptureKit)
+```json
+{
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0"
+  }
+}
+```
+
+## Configuration
+
+### app.json (iOS - Expo)
 ```json
 {
   "expo": {
     "name": "Recording App",
     "slug": "recording-app",
     "version": "1.0.0",
-    "orientation": "portrait",
-    "platforms": ["ios", "android"],
-    "experiments": {
-      "typedRoutes": true
-    },
+    "platforms": ["ios"],
     "plugins": [
       [
         "expo-audio",
         {
-          "microphonePermission": "This app needs microphone access to record audio."
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for recording."
         }
       ],
       "expo-router"
     ],
     "ios": {
-      "bundleIdentifier": "com.yourcompany.recordingapp",
+      "bundleIdentifier": "com.recordingapp.ios",
       "supportsTablet": true,
       "deploymentTarget": "17.0",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "We need microphone access for audio recording.",
+        "NSMicrophoneUsageDescription": "We need microphone access to record audio.",
         "UIBackgroundModes": ["audio"]
       }
-    },
-    "android": {
-      "package": "com.yourcompany.recordingapp",
-      "permissions": ["android.permission.RECORD_AUDIO"]
     }
   }
 }
 ```
 
-### tsconfig.json
+### electron-builder.json (Desktop)
 ```json
 {
-  "extends": "expo/tsconfig.base",
-  "compilerOptions": {
-    "strict": true,
-    "target": "esnext",
-    "module": "commonjs",
-    "jsx": "react-native",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "@features/*": ["src/features/*"],
-      "@services/*": ["src/services/*"],
-      "@shared/*": ["src/shared/*"]
-    }
-  }
-}
-```
-
-### eas.json
-```json
-{
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "simulator": true
+  "appId": "com.recordingapp.desktop",
+  "productName": "Recording App",
+  "directories": {
+    "output": "dist"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.productivity",
+    "entitlements": "entitlements.mac.plist",
+    "entitlementsInherit": "entitlements.mac.plist",
+    "hardenedRuntime": true
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
       }
-    },
-    "preview": {
-      "distribution": "internal"
-    },
-    "production": {
-      "autoIncrement": true
+    ]
+  }
+}
+```
+
+### entitlements.mac.plist (macOS Permissions)
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.device.camera</key>
+  <false/>
+</dict>
+</plist>
+```
+
+## Native Module Implementation (macOS ScreenCaptureKit)
+
+### Node.js Addon (not Expo module!)
+
+```cpp
+// native-modules/electron-screencapturekit/src/screencapture.mm
+#import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <AVFoundation/AVFoundation.h>
+#include <napi.h>
+
+class ScreenCaptureSession {
+private:
+  SCStream* stream;
+  AVAssetWriter* writer;
+
+public:
+  Napi::Promise Start(const Napi::CallbackInfo& info) {
+    auto env = info.Env();
+    auto deferred = Napi::Promise::Deferred::New(env);
+
+    // Get shareable content
+    [SCShareableContent getShareableContentWithCompletionHandler:^(
+      SCShareableContent* content, NSError* error
+    ) {
+      if (error) {
+        deferred.Reject(Napi::Error::New(env, error.localizedDescription.UTF8String).Value());
+        return;
+      }
+
+      // Configure stream
+      SCStreamConfiguration* config = [[SCStreamConfiguration alloc] init];
+      config.capturesAudio = YES;
+      config.sampleRate = 48000;
+      config.channelCount = 2;
+
+      // Create filter (capture display)
+      SCContentFilter* filter = [[SCContentFilter alloc]
+        initWithDisplay:content.displays.firstObject
+        excludingWindows:@[]];
+
+      // Create stream
+      stream = [[SCStream alloc]
+        initWithFilter:filter
+        configuration:config
+        delegate:nil];
+
+      // Start capture
+      [stream startCaptureWithCompletionHandler:^(NSError* error) {
+        if (error) {
+          deferred.Reject(Napi::Error::New(env, error.localizedDescription.UTF8String).Value());
+        } else {
+          deferred.Resolve(env.Null());
+        }
+      }];
+    }];
+
+    return deferred.Promise();
+  }
+
+  Napi::Promise Stop(const Napi::CallbackInfo& info) {
+    auto env = info.Env();
+    auto deferred = Napi::Promise::Deferred::New(env);
+
+    [stream stopCaptureWithCompletionHandler:^(NSError* error) {
+      if (error) {
+        deferred.Reject(Napi::Error::New(env, error.localizedDescription.UTF8String).Value());
+      } else {
+        deferred.Resolve(Napi::String::New(env, outputPath.UTF8String));
+      }
+    }];
+
+    return deferred.Promise();
+  }
+};
+
+// Node-API bindings
+Napi::Object Init(Napi::Env env, Napi::Object exports) {
+  exports.Set("start", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+    ScreenCaptureSession session;
+    return session.Start(info);
+  }));
+
+  exports.Set("stop", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+    ScreenCaptureSession session;
+    return session.Stop(info);
+  }));
+
+  return exports;
+}
+
+NODE_API_MODULE(screencapture, Init)
+```
+
+### binding.gyp
+```python
+{
+  "targets": [
+    {
+      "target_name": "screencapture",
+      "sources": [ "src/screencapture.mm" ],
+      "include_dirs": [
+        "<!@(node -p \"require('node-addon-api').include\")"
+      ],
+      "libraries": [
+        "-framework ScreenCaptureKit",
+        "-framework AVFoundation",
+        "-framework CoreMedia"
+      ],
+      "xcode_settings": {
+        "MACOSX_DEPLOYMENT_TARGET": "12.3",
+        "OTHER_CFLAGS": ["-ObjC++"]
+      }
     }
-  }
+  ]
 }
 ```
-
-## Native Module Implementation (Phase 3)
-
-### ScreenCaptureKit Integration
-
-**Requirements**:
-- macOS 12.3+ (ScreenCaptureKit availability)
-- Swift 5.5+
-- Xcode 13+
-
-**Key APIs**:
-- `SCContentSharingPicker` - User selects content to capture
-- `SCStreamConfiguration` - Configure audio capture settings
-- `SCStream` - Capture stream
-- `SCStreamOutput` - Receive audio samples
-
-**Module Structure**:
-```swift
-// modules/system-audio-macos/ios/SystemAudioMacOS.swift
-@objc(SystemAudioMacOS)
-class SystemAudioMacOS: Module {
-  @objc
-  func startSystemAudioCapture(options: [String: Any]) -> Promise {
-    // ScreenCaptureKit implementation
-  }
-
-  @objc
-  func stopSystemAudioCapture() -> Promise {
-    // Stop capture, return file URI
-  }
-}
-```
-
-**Permissions**:
-- Screen Recording permission (System Preferences > Privacy & Security)
-- No automatic permission request API - user must enable manually
-- App should detect and guide user to settings
-
-## Dependencies
-
-### Production Dependencies
-```json
-{
-  "expo": "~52.0.0",
-  "expo-audio": "~14.0.0",
-  "expo-router": "~4.0.0",
-  "expo-file-system": "~18.0.0",
-  "expo-status-bar": "~2.0.0",
-  "react": "18.3.1",
-  "react-native": "0.76.5",
-  "react-native-safe-area-context": "4.12.0",
-  "react-native-screens": "~4.3.0",
-  "zustand": "^5.0.0"
-}
-```
-
-### Development Dependencies
-```json
-{
-  "@types/react": "~18.3.12",
-  "typescript": "^5.3.0",
-  "@expo/config-plugins": "~9.0.0"
-}
-```
-
-## Security & Privacy Considerations
-
-### Permissions
-- Request microphone permission before recording
-- Explain permission usage clearly to users
-- Handle permission denials gracefully
-- Provide settings link if permission denied
-
-### Data Storage
-- Recordings stored locally in app sandbox
-- No cloud upload without explicit user action
-- Secure file deletion (overwrite before delete in future)
-- Respect user privacy
-
-### macOS System Audio
-- User must explicitly grant screen recording permission
-- Clear indication when system audio is being captured
-- Recording indicator in app UI
-- Option to disable system audio capture
-
-## Testing Strategy (Future Phases)
-
-### Unit Tests
-- Audio service functions
-- File storage operations
-- State management (Zustand)
-- Utility functions
-
-### Integration Tests
-- Recording flow end-to-end
-- File creation and retrieval
-- Permission handling
-
-### Platform Tests
-- iOS microphone recording
-- macOS microphone recording
-- macOS system audio (native module)
 
 ## Build & Deployment
 
-### Development Builds
+### iOS Build (EAS)
 ```bash
-# iOS Simulator
-eas build --profile development --platform ios --local
+# Development build
+eas build --profile development --platform ios
 
-# macOS (future - requires native module)
-eas build --profile development --platform ios --local
-```
-
-### Production Builds
-```bash
-# iOS
+# Production build
 eas build --profile production --platform ios
 
 # Submit to App Store
 eas submit --platform ios
 ```
 
-## Known Limitations
+### Electron Build
+```bash
+# macOS
+npm run build:mac        # Creates .dmg and .zip
+npm run build:mac:arm64  # Apple Silicon
+npm run build:mac:x64    # Intel
 
-### iOS
-- ❌ System audio capture impossible (Apple security restriction)
-- ❌ Cannot select specific audio input source programmatically
-- ⚠️ Background recording requires UIBackgroundModes configuration
-- ⚠️ DRM-protected content cannot be recorded (system enforcement)
+# Windows (future)
+npm run build:win
 
-### macOS
-- ⚠️ System audio requires native module (ScreenCaptureKit)
-- ⚠️ User must manually enable screen recording permission
-- ⚠️ Expo Go not supported with native module (requires development build)
-- ⚠️ macOS support in Expo is less mature than iOS
+# Linux (future)
+npm run build:linux
+```
 
-### Cross-Platform
-- Different audio formats on iOS (.m4a) vs Android (.3gp with LOW_QUALITY)
-- Permission models differ across platforms
-- Audio session management complexity
+## Resources
 
-## Future Enhancements
+- [expo-audio Official Docs](https://docs.expo.dev/versions/latest/sdk/audio/)
+- [Expo Audio Recording Example (Official)](https://github.com/expo/audio-recording-example)
+- [React Native Web](https://necolas.github.io/react-native-web/)
+- [Electron Documentation](https://www.electronjs.org/docs/latest)
+- [ScreenCaptureKit (Apple)](https://developer.apple.com/documentation/screencapturekit)
+- [Node-API Documentation](https://nodejs.org/api/n-api.html)
 
-### v2.0 Features
-- Real-time audio waveform visualization
-- Audio editing (trim, cut, merge)
-- Audio effects (noise reduction, normalization)
-- Cloud backup integration
-- Transcription (Whisper integration)
+## Success Criteria
 
-### v3.0 Features
-- Multi-track recording
-- Audio mixing
-- Live streaming
-- Collaboration features
+### Phase 1 ✅
+- [ ] Monorepo building successfully
+- [ ] iOS app records microphone audio
+- [ ] Electron app launches
+- [ ] Shared components rendering on both platforms
 
-## Resources & References
+### Phase 2 ✅
+- [ ] Recordings saved to disk
+- [ ] Recordings list shows saved files
+- [ ] Playback works
+- [ ] Delete works
 
-### Documentation
-- [Expo Audio Docs](https://docs.expo.dev/versions/latest/sdk/audio/)
-- [Expo Router Docs](https://docs.expo.dev/router/introduction/)
-- [ScreenCaptureKit Apple Docs](https://developer.apple.com/documentation/screencapturekit)
-- [Zustand GitHub](https://github.com/pmndrs/zustand)
+### Phase 3 ✅
+- [ ] macOS system audio capture works
+- [ ] Permission flow complete
+- [ ] Source selection works
 
-### Example Projects
-- [Expo Audio Example](https://github.com/expo/expo/tree/main/apps/expo-go/src/screens/Audio)
-- [ScreenCaptureKit Sample](https://developer.apple.com/documentation/screencapturekit/capturing_screen_content_in_macos)
-
-## Success Metrics
-
-### Phase 1 (Minimal Scaffold)
-- ✅ Project runs on iOS simulator
-- ✅ Basic folder structure in place
-- ✅ Configuration files created
-- ✅ Documentation complete
-
-### Phase 2 (Microphone Recording)
-- ✅ Successful microphone recording on iOS/macOS
-- ✅ Recordings saved and listed
-- ✅ Permissions handled correctly
-- ✅ No crashes during recording
-
-### Phase 3 (System Audio)
-- ✅ ScreenCaptureKit module builds successfully
-- ✅ System audio captured on macOS
-- ✅ Permission flow works
-- ✅ Falls back to microphone on iOS
-
-## Risk Assessment
-
-| Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|------------|
-| ScreenCaptureKit complexity | High | Medium | Start with microphone-only MVP |
-| macOS permission UX | Medium | High | Clear user guidance, documentation |
-| Expo SDK breaking changes | Medium | Low | Pin SDK versions, test updates |
-| Native module maintenance | High | Medium | Good documentation, modular design |
-| App Store rejection | High | Low | Follow guidelines, clear privacy policy |
-
-## Development Workflow
-
-### Setup
-1. Clone repository
-2. `npm install`
-3. `npx expo prebuild` (if using development build)
-4. `npx expo start`
-
-### Development
-1. Create feature branch
-2. Implement changes
-3. Test on simulator/device
-4. Update documentation
-5. Create pull request
-
-### Release
-1. Update version in app.json
-2. Update changelog
-3. Create EAS build
-4. Test production build
-5. Submit to App Store
+### Phase 4 ✅
+- [ ] No crashes
+- [ ] Tests passing
+- [ ] Apps packaged for distribution
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 2.0 (REVISED)
 **Last Updated**: 2025-01-05
-**Status**: Phase 1 - Planning Complete
+**Architecture**: Electron + React Native Web (Desktop) + React Native/Expo (iOS)
+**Status**: Ready for Implementation
