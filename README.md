@@ -1,527 +1,348 @@
 # Recording App
 
-A modern, cross-platform audio recording application supporting **microphone recording** on iOS and desktop, plus **system audio capture** on macOS.
+Minimal audio recording application for telehealth sessions. Designed for reliable capture with robust interruption handling.
 
-## Architecture
+## Purpose
 
-- **Desktop (macOS/Windows/Linux)**: Electron + React Native Web
-- **Mobile (iOS)**: React Native + Expo
-- **Code Sharing**: ~80-90% shared codebase via React Native Web
-- **Monorepo**: Managed with pnpm workspaces + Turborepo
+Record telehealth sessions (Zoom, Teams, browser-based platforms) with confidence that interruptions (phone calls, system alerts) won't lose audio data. Similar to Granola.ai's recording foundation, but minimal: no transcription, no AI, just reliable capture.
 
 ## Features
 
-### Current Features (Phase 1-2)
-- 🎤 **Microphone Recording** - High-quality audio recording on iOS and desktop
-- 📱 **iOS App** - Native iOS app with Expo
-- 🖥️ **Desktop App** - Electron app for macOS/Windows/Linux
-- 💾 **Local Storage** - Recordings saved securely to device
-- 🔄 **Shared Codebase** - 80-90% code reuse across platforms
+- Microphone recording (iOS and desktop)
+- System audio recording (macOS only)
+- Interruption handling (pause/resume on phone calls, etc.)
+- Background recording (iOS)
+- Simple file management
+- No playback UI (files accessible via filesystem)
 
-### Planned Features (Phase 3-4)
-- 🎧 **System Audio Capture** (macOS) - Record audio playing on your Mac
-- 📊 **Waveform Visualization** - Real-time audio visualization
-- ✂️ **Audio Editing** - Trim, cut, and merge recordings
-- ☁️ **Cloud Backup** - Optional cloud storage integration
+## Architecture
 
-## Technology Stack
+**Monorepo** with 80-90% code sharing:
+- **Desktop**: Electron + React Native Web (macOS/Windows/Linux)
+- **Mobile**: React Native + Expo (iOS)
+- **Shared**: Components, logic, state (Zustand)
 
-### Core Technologies
-- **React Native**: 0.76.x (iOS)
-- **React Native Web**: 0.19.x (Electron renderer)
-- **Electron**: 32.x (Desktop wrapper)
-- **Expo SDK**: 54 (iOS, expo-av removed)
-- **TypeScript**: 5.3+ (strict mode)
-- **Node.js**: 20+ LTS
+## Technology
 
-### Key Libraries
-- **expo-audio**: Modern audio recording API for iOS (replaces deprecated expo-av)
-- **Zustand**: Lightweight state management
-- **Vite**: Fast bundler for Electron renderer
-- **Turborepo**: Monorepo build system
+- React 18.3.x + TypeScript 5.3+
+- React Native 0.76.x (iOS)
+- Electron 32.x (desktop)
+- Expo SDK 54 with expo-audio
+- pnpm workspaces + Turborepo
 
 ## Prerequisites
 
-### All Platforms
-- **Node.js**: 20.x or later (LTS)
-- **pnpm**: 8.x or later (`npm install -g pnpm`)
+**All platforms:**
+- Node.js 20+ LTS
+- pnpm 8+
 
-### iOS Development
-- **macOS**: Required for iOS development
-- **Xcode**: 15+ with Command Line Tools
-- **iOS Simulator** or physical device (iOS 17+)
-- **EAS CLI**: `npm install -g eas-cli`
+**iOS development:**
+- macOS with Xcode 15+
+- iOS 17+ device or simulator
+- EAS CLI: `npm install -g eas-cli`
 
-### Desktop Development
-- **macOS**: For building macOS apps
-- **Windows**: For building Windows apps (future)
-- **Linux**: For building Linux apps (future)
+**Desktop development:**
+- macOS 12.3+ (for system audio via ScreenCaptureKit)
+- Windows/Linux (microphone only, system audio future)
 
 ## Quick Start
 
-### 1. Clone & Install
-
 ```bash
-# Clone the repository
+# Clone and install
 git clone <repository-url>
 cd recording-app
-
-# Install dependencies (all packages)
 pnpm install
-```
 
-### 2. Development
-
-#### iOS Development
-```bash
-# Start iOS app (Expo)
+# iOS development
 cd packages/mobile
-pnpm start
+pnpm start              # Start Expo
+pnpm ios                # Run on simulator
 
-# Run on iOS Simulator
-pnpm ios
-
-# Run on physical device
-pnpm ios --device
-```
-
-#### Desktop Development
-```bash
-# Start Electron app
+# Desktop development
 cd packages/desktop
-pnpm dev
+pnpm dev                # Start Electron
 
-# Build for production
+# Build shared package
+cd packages/shared
 pnpm build
 ```
 
-#### Shared Package Development
-```bash
-# Watch mode for shared code
-cd packages/shared
-pnpm dev
+## Project Structure
+
+```
+recording-app/
+├── packages/
+│   ├── mobile/          # iOS app (Expo)
+│   ├── desktop/         # Electron app
+│   └── shared/          # Shared code (80-90%)
+├── native-modules/
+│   └── electron-screencapturekit/   # macOS system audio
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── INTERRUPTIONS.md
+└── PLAN.md
 ```
 
-### 3. Build for Production
+## Usage
 
-#### iOS Production Build
+### iOS
+
+1. Launch app
+2. Grant microphone permission
+3. Tap record button
+4. Recording continues in background
+5. Stop when done
+6. Files saved to app documents directory
+
+**Interruptions:**
+- Incoming call: Recording pauses, resumes if declined
+- Call accepted: Partial recording saved
+- Other interruptions: Automatic pause/resume
+
+### Desktop (macOS)
+
+1. Launch app
+2. Select mode: Microphone or System Audio
+3. For system audio: Grant Screen Recording permission in System Preferences
+4. Click record
+5. Stop when done
+6. Files saved to ~/Documents/Recordings/
+
+**System audio:** Captures output from telehealth apps (Zoom, Teams, browsers)
+
+## Development
+
+### Scripts
+
+**Root:**
+```bash
+pnpm build          # Build all packages
+pnpm dev            # Start all in development mode
+pnpm typecheck      # TypeScript check all packages
+```
+
+**Mobile:**
+```bash
+pnpm start          # Expo dev server
+pnpm ios            # iOS simulator
+pnpm ios --device   # Physical device
+```
+
+**Desktop:**
+```bash
+pnpm dev            # Electron development mode
+pnpm build          # Production build
+pnpm build:mac      # macOS .dmg
+```
+
+**Shared:**
+```bash
+pnpm build          # Build shared package
+pnpm dev            # Watch mode
+```
+
+## Building for Production
+
+### iOS
+
 ```bash
 cd packages/mobile
 
-# Create development build
+# Development build
 eas build --profile development --platform ios
 
-# Create production build
+# Production build
 eas build --profile production --platform ios
 
 # Submit to App Store
 eas submit --platform ios
 ```
 
-#### Desktop Production Build
+### Desktop
+
 ```bash
 cd packages/desktop
 
-# Build for macOS (creates .dmg and .zip)
+# macOS
 pnpm build:mac
 
-# Build for specific architecture
-pnpm build:mac:arm64  # Apple Silicon
-pnpm build:mac:x64    # Intel Mac
-
-# Build for Windows (future)
+# Windows (future)
 pnpm build:win
 
-# Build for Linux (future)
+# Linux (future)
 pnpm build:linux
 ```
 
-## Project Structure
-
-```
-recording-app/                         # Monorepo root
-├── packages/
-│   ├── mobile/                        # iOS app (React Native + Expo)
-│   │   ├── app/                       # Expo Router pages
-│   │   ├── app.json                   # Expo configuration
-│   │   └── package.json
-│   │
-│   ├── desktop/                       # Desktop app (Electron)
-│   │   ├── src/
-│   │   │   ├── main/                  # Electron main process
-│   │   │   ├── renderer/              # Electron renderer (React)
-│   │   │   └── preload.ts             # Preload script
-│   │   ├── electron-builder.json      # Packaging config
-│   │   └── package.json
-│   │
-│   └── shared/                        # Shared code (80-90% of app!)
-│       ├── src/
-│       │   ├── features/              # Feature modules
-│       │   ├── components/            # Shared UI components
-│       │   ├── services/              # Business logic
-│       │   └── utils/                 # Utilities
-│       └── package.json
-│
-├── native-modules/                    # Native code
-│   └── electron-screencapturekit/     # macOS system audio (Node.js addon)
-│       ├── src/screencapture.mm       # Objective-C++ implementation
-│       ├── binding.gyp                # Node-GYP config
-│       └── package.json
-│
-├── docs/                              # Documentation
-│   ├── PLAN_REVISED.md                # Implementation plan
-│   ├── ARCHITECTURE.md                # Technical architecture
-│   └── ELECTRON_SETUP.md              # Electron setup guide
-│
-├── package.json                       # Root package.json
-├── pnpm-workspace.yaml                # PNPM workspaces config
-└── turbo.json                         # Turborepo config
-```
-
-## Platform-Specific Notes
+## Platform Notes
 
 ### iOS
 
-**Supported:**
-- ✅ Microphone recording via expo-audio
-- ✅ Background recording (UIBackgroundModes)
-- ✅ High-quality audio (.m4a AAC format)
-- ✅ iOS 17.0+
+- Microphone recording only (system audio impossible on iOS)
+- Background recording supported
+- Requires iOS 17.0+
+- UIBackgroundModes: ["audio"] configured
 
-**Not Supported:**
-- ❌ System audio capture (Apple security restriction)
-- ❌ Audio input source selection
+### macOS
 
-**Required Permissions:**
-- Microphone access (NSMicrophoneUsageDescription)
-- Background audio (UIBackgroundModes: ["audio"])
-
-**Important:** expo-av is deprecated. Use expo-audio instead (SDK 54+).
-
-### macOS Desktop
-
-**Supported:**
-- ✅ Microphone recording via Web Audio API
-- ✅ System audio capture via ScreenCaptureKit (Phase 3)
-- ✅ macOS 12.3+ (ScreenCaptureKit requirement)
-- ✅ Audio formats: .m4a, .webm
-
-**Requirements:**
-- Screen Recording permission (for system audio)
-- Microphone permission (for mic recording)
-- macOS 12.3+ for system audio capture
-
-**Limitations:**
+- Microphone and system audio
+- System audio requires macOS 12.3+ (ScreenCaptureKit)
 - User must manually enable Screen Recording in System Preferences
-- Cannot capture DRM-protected audio
+- No automatic permission request available
 
-### Windows Desktop (Future)
+### Windows/Linux
 
-**Planned:**
-- Microphone recording via Web Audio API
-- System audio capture via WASAPI
-- Audio formats: .webm, .mp3
+- Microphone recording (implemented)
+- System audio (future - WASAPI for Windows, PulseAudio for Linux)
 
-### Linux Desktop (Future)
+## Interruption Handling
 
-**Planned:**
-- Microphone recording via Web Audio API
-- System audio capture via PulseAudio
-- Audio formats: .webm, .ogg
+### iOS Interruptions
 
-## Usage
+**Types:**
+- Phone calls (cellular, FaceTime, VoIP)
+- Alarms and timers
+- Siri
+- Emergency alerts
+- Other apps requesting audio
 
-### Recording Audio (iOS)
+**Behavior:**
+- Interruption begins: Recording pauses automatically
+- User declines: Recording resumes automatically
+- User accepts: Recording stops, partial file saved with metadata
 
-1. **Open the app** on your iOS device
-2. **Grant microphone permission** when prompted
-3. **Tap the red Record button** to start recording
-4. **Tap Stop** when finished
-5. **View your recordings** in the Recordings tab
+**Implementation:**
+- AVAudioSession interruption notifications
+- Recording state persisted
+- Metadata tracks interruption count
 
-### Recording Audio (Desktop)
+### Testing Requirements
 
-1. **Launch the Electron app**
-2. **Choose recording mode:**
-   - Microphone: Records from your mic
-   - System Audio (macOS only): Records audio playing on your computer
-3. **For system audio:** Grant Screen Recording permission in System Preferences
-4. **Click Record** to start
-5. **Click Stop** when done
-6. **Recordings appear in your library**
+Critical scenarios:
+1. Record, receive call, decline, verify continuous
+2. Record, receive call, accept, verify partial saved
+3. Record, trigger alarm, verify pause/resume
+4. Record, background for 5 minutes, verify continues
+5. Record with low storage, verify warning
 
-## Development
+See `docs/INTERRUPTIONS.md` for detailed testing guide.
 
-### Available Scripts
+## File Format
 
-#### Root (Monorepo)
-```bash
-pnpm install           # Install all dependencies
-pnpm build             # Build all packages
-pnpm dev               # Start all packages in dev mode
-pnpm test              # Run all tests
-pnpm lint              # Lint all packages
-pnpm typecheck         # TypeScript check all packages
-```
-
-#### Mobile Package
-```bash
-pnpm start             # Start Expo dev server
-pnpm ios               # Run on iOS
-pnpm build:ios         # Build with EAS
-```
-
-#### Desktop Package
-```bash
-pnpm dev               # Start Electron in dev mode
-pnpm build             # Build for production
-pnpm build:mac         # Build macOS app
-pnpm package           # Package with electron-builder
-```
-
-#### Shared Package
-```bash
-pnpm dev               # Watch mode for development
-pnpm build             # Build shared package
-pnpm test              # Run tests
-```
-
-### Code Sharing Strategy
-
-The shared package contains platform-agnostic code that works on both iOS and Electron:
-
-**What's Shared (80-90%):**
-- ✅ UI Components (React Native components)
-- ✅ Business Logic (services, utils)
-- ✅ State Management (Zustand stores)
-- ✅ Type Definitions (TypeScript types)
-- ✅ Hooks (custom React hooks)
-
-**What's Platform-Specific:**
-- 📱 iOS: expo-audio integration, native permissions
-- 🖥️ Desktop: Electron IPC, Node.js native addons
-- 🎧 macOS: ScreenCaptureKit native module
-
-### Platform Detection
-
-The shared package uses platform detection utilities:
+- Format: .m4a (AAC encoding)
+- Quality: 48kHz stereo, 192kbps
+- Naming: `recording_YYYYMMDD_HHMMSS.m4a`
+- Metadata: JSON in AsyncStorage/localStorage
 
 ```typescript
-import { isElectron, isIOS, isMacOS } from '@recording-app/shared/utils/platform';
-
-if (isElectron()) {
-  // Desktop-specific code
-} else if (isIOS()) {
-  // iOS-specific code
+interface Recording {
+  id: string;
+  filename: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  size: number;
+  recordingMode: 'microphone' | 'system';
+  interrupted: boolean;
+  interruptionCount: number;
+  platform: 'ios' | 'macos' | 'windows' | 'linux';
 }
 ```
 
-## Architecture Highlights
+## Storage
 
-### Electron + React Native Web
+**iOS:**
+- Location: App documents directory
+- Backed up to iCloud (if enabled)
+- Accessible via Files app
 
-The desktop app uses **React Native Web** to render React Native components in Electron. This means:
-
-1. **Write once, run everywhere**: Same components work on iOS and desktop
-2. **Native performance**: Electron provides access to native APIs
-3. **Familiar stack**: React/TypeScript everywhere
-
-### Monorepo Benefits
-
-1. **Shared dependencies**: Install once, use everywhere
-2. **Type safety**: Shared types across packages
-3. **Atomic changes**: Change shared code, rebuild everything
-4. **Efficient CI/CD**: Turborepo caching
-
-### Audio Architecture
-
-```
-┌─────────────────────────────────────┐
-│      Shared Audio Service           │  ← Platform-agnostic API
-└─────────────┬───────────────────────┘
-              │
-    ┌─────────┴─────────┐
-    │                   │
-┌───▼────┐         ┌───▼─────┐
-│  iOS   │         │ Desktop │
-│ expo-  │         │ Electron│
-│ audio  │         │ IPC +   │
-│        │         │ Native  │
-│        │         │ Addon   │
-└────────┘         └─────────┘
-```
+**Desktop:**
+- Location: `~/Documents/Recordings/` (default)
+- User-configurable
+- Direct filesystem access
 
 ## Troubleshooting
 
-### iOS Issues
+### iOS
 
-**"Permission denied" when recording**
-- Ensure microphone permission is granted in Settings → Privacy → Microphone
-- Check `app.json` has `microphonePermission` configured
-- Rebuild the app after changing permissions
+**"Permission denied"**
+- Settings → Privacy & Security → Microphone → Enable for app
+- Rebuild app after app.json changes
 
-**"Module not found: expo-audio"**
-- Run `npx expo install expo-audio`
-- Ensure you're using Expo SDK 54+ (expo-av is removed)
-- Clear cache: `npx expo start --clear`
+**"Recording won't resume after call"**
+- Check UIBackgroundModes configured
+- Verify setAudioModeAsync called with correct options
 
-**Build fails with EAS**
-- Check Expo account is configured: `eas whoami`
-- Verify `eas.json` configuration
-- Review build logs on Expo dashboard
+**"App crashes on recording"**
+- Check iOS version (17.0+ required)
+- Verify expo-audio installed correctly
+- Check Expo SDK version (54+ required, expo-av removed)
 
-### Desktop Issues
+### macOS
 
-**Electron app won't launch**
-- Check Node.js version: `node --version` (should be 20+)
-- Rebuild native modules: `cd packages/desktop && pnpm rebuild`
-- Check for port conflicts (Vite dev server uses port 5173)
+**"System audio not working"**
+- Verify macOS 12.3+
+- System Preferences → Privacy & Security → Screen Recording
+- Enable permission for app
+- Restart app
 
-**System audio not working (macOS)**
-- Verify Screen Recording permission is enabled:
-  System Preferences → Privacy & Security → Screen Recording
-- Check macOS version (12.3+ required for ScreenCaptureKit)
-- Review native module build logs
+**"Permission popup doesn't appear"**
+- Screen Recording permission has no automatic request
+- App must guide user to System Preferences manually
 
-**Native module build fails**
+**"Native module build fails"**
 - Install Xcode Command Line Tools: `xcode-select --install`
-- Verify node-gyp is installed: `npm install -g node-gyp`
-- Check binding.gyp configuration
+- Install node-gyp: `npm install -g node-gyp`
+- Verify binding.gyp configuration
 
-### Monorepo Issues
+### Monorepo
 
-**Dependencies not resolving**
-- Run `pnpm install` from root directory
-- Check `pnpm-workspace.yaml` configuration
-- Ensure workspace protocol is used: `"@recording-app/shared": "workspace:*"`
+**"Dependencies not resolving"**
+- Run `pnpm install` from root
+- Check `pnpm-workspace.yaml`
+- Verify workspace protocol: `"@recording-app/shared": "workspace:*"`
 
-**TypeScript errors in shared package**
-- Build shared package first: `cd packages/shared && pnpm build`
-- Check tsconfig.json `paths` configuration
-- Verify all packages have TypeScript installed
+**"TypeScript errors in shared package"**
+- Build shared first: `cd packages/shared && pnpm build`
+- Check tsconfig.json paths configuration
 
-## Testing
+## Out of Scope
 
-### Unit Tests
-```bash
-# Run all tests
-pnpm test
+The following are explicitly not included:
 
-# Run tests for specific package
-cd packages/shared && pnpm test
+- Playback UI (use OS file manager)
+- Transcription
+- AI features
+- Note taking
+- Export/share UI
+- Cloud storage
+- Waveform visualization
+- Audio editing
 
-# Watch mode
-pnpm test --watch
-```
-
-### E2E Tests (Future)
-```bash
-# iOS E2E
-cd packages/mobile && pnpm test:e2e
-
-# Desktop E2E
-cd packages/desktop && pnpm test:e2e
-```
-
-## Contributing
-
-### Development Workflow
-
-1. **Create a branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make changes**
-   - Prefer shared code over platform-specific
-   - Follow TypeScript strict mode
-   - Use path aliases (`@recording-app/shared`)
-
-3. **Test thoroughly**
-   - Test on both iOS and desktop
-   - Verify shared components work on both platforms
-   - Check edge cases
-
-4. **Commit changes**
-   ```bash
-   git add .
-   git commit -m "feat: your feature description"
-   ```
-
-5. **Push and create PR**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-### Code Style
-
-- **TypeScript**: Strict mode, explicit types, no `any`
-- **File naming**: PascalCase for components, camelCase for utilities
-- **Imports**: Use path aliases, group by external/internal
-- **Components**: Functional components with hooks
-- **Platform-specific code**: Isolate in services, not components
-
-## Roadmap
-
-### Phase 1: Setup & Scaffolding ✅
-- [x] Monorepo structure
-- [x] Shared package with basic UI
-- [ ] iOS microphone recording
-- [ ] Electron app shell
-
-### Phase 2: Core Features 🚧
-- [ ] File storage (cross-platform)
-- [ ] Recordings list
-- [ ] Audio playback
-- [ ] State management (Zustand)
-- [ ] Delete recordings
-
-### Phase 3: macOS System Audio 📅
-- [ ] ScreenCaptureKit Node.js addon
-- [ ] Permission handling
-- [ ] Source selection (display/window/app)
-- [ ] macOS system audio capture
-
-### Phase 4: Polish & Features 📅
-- [ ] Waveform visualization
-- [ ] Audio editing (trim, cut)
-- [ ] Export/share functionality
-- [ ] Settings screen
-- [ ] App icons and branding
-- [ ] App Store / distribution
-
-### Future Enhancements 🔮
-- [ ] Windows system audio (WASAPI)
-- [ ] Linux system audio (PulseAudio)
-- [ ] Cloud sync
-- [ ] Audio transcription
-- [ ] Multi-track recording
+Files are accessible via filesystem for manual handling.
 
 ## Resources
 
-### Documentation
-- [Expo Audio Docs (Official)](https://docs.expo.dev/versions/latest/sdk/audio/)
-- [Expo Audio Recording Example](https://github.com/expo/audio-recording-example)
-- [React Native Web](https://necolas.github.io/react-native-web/)
-- [Electron Documentation](https://www.electronjs.org/docs/latest)
+- [PLAN.md](./PLAN.md) - Complete implementation specification
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - Technical architecture
+- [docs/INTERRUPTIONS.md](./docs/INTERRUPTIONS.md) - Interruption handling guide
+- [expo-audio Documentation](https://docs.expo.dev/versions/latest/sdk/audio/)
 - [ScreenCaptureKit (Apple)](https://developer.apple.com/documentation/screencapturekit)
 
-### Internal Docs
-- [PLAN_REVISED.md](./PLAN_REVISED.md) - Complete implementation plan
-- [ARCHITECTURE.md](./docs/ARCHITECTURE.md) - Technical architecture
-- [ELECTRON_SETUP.md](./docs/ELECTRON_SETUP.md) - Electron setup guide
+## Contributing
+
+1. Create feature branch
+2. Make changes (prefer shared code over platform-specific)
+3. Test on both iOS and desktop
+4. Ensure TypeScript passes strict checks
+5. Test interruption scenarios thoroughly
+6. Submit pull request
 
 ## License
 
-[Your License Here]
-
-## Contact
-
-[Your Contact Information]
+[Your License]
 
 ---
 
-**Version**: 0.1.0 (Alpha)
-**Architecture**: Electron + React Native Web (Desktop) + Expo (iOS)
-**Status**: Phase 1 - Setup & Scaffolding
+**Version**: 1.0.0
+**Focus**: Minimal, reliable recording for telehealth
 **Last Updated**: 2025-01-05
