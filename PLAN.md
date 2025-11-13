@@ -43,7 +43,7 @@ Medical professionals conducting telehealth visits need to record sessions relia
 **Build & Package:**
 - electron-builder (packaging)
 - node-gyp (native module compilation)
-- pnpm (package manager)
+- npm (package manager)
 
 ## Feature Specification
 
@@ -593,33 +593,33 @@ export function useRecording() {
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Build native module (macOS only)
-cd native-modules/screencapturekit && pnpm rebuild && cd ../..
+cd native-modules/screencapturekit && npm rebuild && cd ../..
 
 # Start development server
-pnpm dev
+npm run dev
 ```
 
 ### Production Builds
 
 **macOS:**
 ```bash
-pnpm build:mac
+npm run build:mac
 # Output: dist/Bridge-1.0.0.dmg
 # For distribution: Code sign and notarize
 ```
 
 **Windows:**
 ```bash
-pnpm build:win
+npm run build:win
 # Output: dist/Bridge-Setup-1.0.0.exe
 ```
 
 **Linux:**
 ```bash
-pnpm build:linux
+npm run build:linux
 # Output: dist/Bridge-1.0.0.AppImage
 ```
 

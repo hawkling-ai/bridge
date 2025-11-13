@@ -14,13 +14,13 @@
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Run prototype
-pnpm start
+npm start
 
 # Run with verbose logging
-pnpm run dev
+npm run dev
 ```
 
 ## Testing Checklist

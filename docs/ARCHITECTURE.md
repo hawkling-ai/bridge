@@ -28,7 +28,7 @@ Platform Implementation (expo-audio, Electron IPC, Native Addons)
 Strict TypeScript throughout. Shared types ensure consistency across packages.
 
 ### 5. Monorepo for Scale
-Independent packages with shared code, managed with pnpm workspaces + Turborepo for fast builds.
+Independent packages with shared code, managed with npm workspaces + Turborepo for fast builds.
 
 ## System Architecture
 
@@ -910,21 +910,28 @@ UI updates
 
 ## Monorepo Setup
 
-### pnpm Workspaces
+### npm Workspaces
 
-**pnpm-workspace.yaml**
-```yaml
-packages:
-  - 'packages/*'
-  - 'native-modules/*'
+**package.json (root)**
+```json
+{
+  "workspaces": [
+    "packages/*",
+    "native-modules/*"
+  ]
+}
 ```
 
-**Root package.json**
+**Root package.json (continued)**
 ```json
 {
   "name": "recording-app",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "native-modules/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
@@ -938,7 +945,7 @@ packages:
   },
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=8.0.0"
+    "npm": ">=10.0.0"
   }
 }
 ```
@@ -1178,10 +1185,10 @@ import { FlashList } from '@shopify/flash-list';
 Turbo caches build outputs across all packages:
 ```bash
 # First build: slow
-pnpm build
+npm run build
 
 # Second build: instant (cached)
-pnpm build
+npm run build
 ```
 
 ## Testing Strategy

@@ -16,9 +16,44 @@
       margin: 8px 4px;
       font-size: 14px;
       cursor: pointer;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
     }
+    button:hover { background: #f5f5f5; }
+    button.recording { background: #ff4444; color: white; }
+    button.stop { background: #ff4444; color: white; }
     h1 { font-size: 24px; }
     p { color: #666; }
+
+    /* Volume visualizer styles */
+    .visualizer {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      display: none;
+    }
+    .visualizer.active { display: block; }
+    .visualizer h4 { margin: 0 0 10px 0; font-size: 14px; color: #666; }
+    .volume-bars {
+      display: flex;
+      gap: 3px;
+      height: 60px;
+      align-items: flex-end;
+    }
+    .volume-bar {
+      flex: 1;
+      background: #4CAF50;
+      border-radius: 2px 2px 0 0;
+      transition: height 0.1s ease;
+      min-height: 2px;
+    }
+    .volume-level {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
@@ -27,20 +62,26 @@
 
   <div>
     <h3>Recording Controls</h3>
-    <button onclick="audioRecorder.startMicrophoneAudio()">
+    <button id="btn-mic">
       🎤 Record Microphone
     </button>
-    <button onclick="audioRecorder.startSystemAudio()">
+    <button id="btn-system">
       🔊 Record System Audio
     </button>
-    <button onclick="audioRecorder.stopRecording()" style="background: #ff4444; color: white;">
+    <button id="btn-stop" class="stop">
       ⏹ Stop Recording
     </button>
   </div>
 
+  <div id="visualizer" class="visualizer">
+    <h4>Audio Level</h4>
+    <div class="volume-bars" id="volume-bars"></div>
+    <div class="volume-level" id="volume-level">Volume: 0%</div>
+  </div>
+
   <div>
     <h3>Device Info</h3>
-    <button onclick="audioRecorder.enumerateDevices()">
+    <button id="btn-devices">
       🔍 List Audio Devices
     </button>
   </div>

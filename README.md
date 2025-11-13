@@ -21,13 +21,13 @@ Record telehealth sessions (Zoom, Teams, browser-based platforms) on desktop. Ca
 - React Native Web 0.19.x
 - Zustand (state management)
 - Vite (bundler)
-- pnpm
+- npm
 
 ## Prerequisites
 
 **All platforms:**
 - Node.js 20+ LTS
-- pnpm 8+
+- npm (comes with Node.js)
 
 **macOS-specific (for system audio):**
 - macOS 12.3+ (Monterey or later)
@@ -45,16 +45,16 @@ Record telehealth sessions (Zoom, Teams, browser-based platforms) on desktop. Ca
 # Clone and install
 git clone <repository-url>
 cd bridge
-pnpm install
+npm install
 
 # Development
-pnpm dev                # Start Electron in development mode
+npm run dev             # Start Electron in development mode
 
 # Build for production
-pnpm build              # Production build
-pnpm build:mac          # macOS .dmg
-pnpm build:win          # Windows installer (future)
-pnpm build:linux        # Linux package (future)
+npm run build           # Production build
+npm run build:mac       # macOS .dmg
+npm run build:win       # Windows installer (future)
+npm run build:linux     # Linux package (future)
 ```
 
 ### macOS System Audio Setup
@@ -126,14 +126,14 @@ bridge/
 ### Scripts
 
 ```bash
-pnpm dev            # Start Electron in development mode with hot reload
-pnpm build          # Production build
-pnpm build:mac      # Build macOS .dmg installer
-pnpm build:win      # Build Windows installer (future)
-pnpm build:linux    # Build Linux package (future)
-pnpm typecheck      # Run TypeScript type checking
-pnpm lint           # Run ESLint
-pnpm format         # Format code with Prettier
+npm run dev         # Start Electron in development mode with hot reload
+npm run build       # Production build
+npm run build:mac   # Build macOS .dmg installer
+npm run build:win   # Build Windows installer (future)
+npm run build:linux # Build Linux package (future)
+npm run typecheck   # Run TypeScript type checking
+npm run lint        # Run ESLint
+npm run format      # Format code with Prettier
 ```
 
 ### Native Module Development (macOS)
@@ -144,7 +144,7 @@ If you're working on the ScreenCaptureKit native module:
 cd native-modules/screencapturekit
 
 # Rebuild after C++/Objective-C changes
-pnpm rebuild
+npm rebuild
 
 # Or use node-gyp directly
 node-gyp rebuild
@@ -156,7 +156,7 @@ node-gyp rebuild
 
 ```bash
 # Build .dmg installer
-pnpm build:mac
+npm run build:mac
 
 # Output: dist/Bridge-1.0.0.dmg
 # Installer includes code signing (if certificates configured)
@@ -171,14 +171,14 @@ pnpm build:mac
 ### Windows (future)
 
 ```bash
-pnpm build:win
+npm run build:win
 # Output: dist/Bridge-Setup-1.0.0.exe
 ```
 
 ### Linux (future)
 
 ```bash
-pnpm build:linux
+npm run build:linux
 # Output: dist/Bridge-1.0.0.AppImage
 ```
 
@@ -273,8 +273,8 @@ interface Recording {
 
 **"App won't launch after build"**
 - Check Console.app for crash logs
-- Verify all dependencies installed: `pnpm install`
-- Try clean rebuild: `rm -rf node_modules dist && pnpm install && pnpm build`
+- Verify all dependencies installed: `npm install`
+- Try clean rebuild: `rm -rf node_modules dist && npm install && npm run build`
 
 ### Windows
 
@@ -286,12 +286,12 @@ interface Recording {
 ### General
 
 **"Dependencies not resolving"**
-- Run `pnpm install` from root directory
-- Clear pnpm cache: `pnpm store prune`
+- Run `npm install` from root directory
+- Clear npm cache: `npm cache clean --force`
 - Verify Node.js version: `node --version` (should be 20+)
 
 **"TypeScript errors"**
-- Run type check: `pnpm typecheck`
+- Run type check: `npm run typecheck`
 - Verify tsconfig.json configuration
 - Check for missing type definitions
 
@@ -323,8 +323,8 @@ Files are accessible via filesystem for manual handling.
 1. Create feature branch from `main`
 2. Make changes
 3. Test on target platforms (macOS, Windows, Linux)
-4. Ensure TypeScript passes strict checks: `pnpm typecheck`
-5. Format code: `pnpm format`
+4. Ensure TypeScript passes strict checks: `npm run typecheck`
+5. Format code: `npm run format`
 6. Submit pull request
 
 ## License

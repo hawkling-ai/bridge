@@ -47,8 +47,8 @@ This is a **Node.js native addon** (not an Expo module) that wraps Apple's audio
 
 ```bash
 cd native-modules/electron-screencapturekit
-pnpm install
-pnpm build
+npm install
+npm run build
 ```
 
 ## API
@@ -733,10 +733,10 @@ npm install -g node-gyp
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Configure
-pnpm run build
+npm run build
 
 # The compiled addon will be in build/Release/screencapturekit.node
 ```
@@ -807,7 +807,7 @@ npm install -g node-gyp
 **Error: "Cannot find module 'node-addon-api'"**
 ```bash
 cd native-modules/electron-screencapturekit
-pnpm install
+npm install
 ```
 
 ## Additional Implementation: Microphone & Combined Capture
