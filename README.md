@@ -1,34 +1,27 @@
-# Recording App
+# Bridge - Desktop Audio Recording App
 
-Minimal audio recording application for telehealth sessions. Designed for reliable capture with robust interruption handling.
+Electron-based audio recording application for telehealth sessions. Designed for reliable capture with system audio support on macOS.
 
 ## Purpose
 
-Record telehealth sessions (Zoom, Teams, browser-based platforms) with confidence that interruptions (phone calls, system alerts) won't lose audio data. Similar to Granola.ai's recording foundation, but minimal: no transcription, no AI, just reliable capture.
+Record telehealth sessions (Zoom, Teams, browser-based platforms) on desktop. Capture both microphone input and system audio (macOS). Minimal scope: reliable recording only, no transcription, no AI, just solid audio capture.
 
 ## Features
 
-- Microphone recording (iOS and desktop)
-- System audio recording (macOS only)
-- Interruption handling (pause/resume on phone calls, etc.)
-- Background recording (iOS)
+- Microphone recording (macOS/Windows/Linux)
+- System audio recording (macOS only via ScreenCaptureKit)
 - Simple file management
 - No playback UI (files accessible via filesystem)
-
-## Architecture
-
-**Monorepo** with 80-90% code sharing:
-- **Desktop**: Electron + React Native Web (macOS/Windows/Linux)
-- **Mobile**: React Native + Expo (iOS)
-- **Shared**: Components, logic, state (Zustand)
+- Cross-platform desktop support
 
 ## Technology
 
+- Electron 32.x
 - React 18.3.x + TypeScript 5.3+
-- React Native 0.76.x (iOS)
-- Electron 32.x (desktop)
-- Expo SDK 54 with expo-audio
-- pnpm workspaces + Turborepo
+- React Native Web 0.19.x
+- Zustand (state management)
+- Vite (bundler)
+- pnpm
 
 ## Prerequisites
 
@@ -36,274 +29,271 @@ Record telehealth sessions (Zoom, Teams, browser-based platforms) with confidenc
 - Node.js 20+ LTS
 - pnpm 8+
 
-**iOS development:**
-- macOS with Xcode 15+
-- iOS 17+ device or simulator
-- EAS CLI: `npm install -g eas-cli`
+**macOS-specific (for system audio):**
+- macOS 12.3+ (Monterey or later)
+- Xcode Command Line Tools: `xcode-select --install`
+- node-gyp for native module compilation: `npm install -g node-gyp`
+- Screen Recording permission (granted manually in System Settings)
 
-**Desktop development:**
-- macOS 12.3+ (for system audio via ScreenCaptureKit)
-- Windows/Linux (microphone only, system audio future)
+**Windows/Linux:**
+- Microphone recording supported
+- System audio support: future (WASAPI for Windows, PulseAudio for Linux)
 
 ## Quick Start
 
 ```bash
 # Clone and install
 git clone <repository-url>
-cd recording-app
+cd bridge
 pnpm install
 
-# iOS development
-cd packages/mobile
-pnpm start              # Start Expo
-pnpm ios                # Run on simulator
+# Development
+pnpm dev                # Start Electron in development mode
 
-# Desktop development
-cd packages/desktop
-pnpm dev                # Start Electron
-
-# Build shared package
-cd packages/shared
-pnpm build
+# Build for production
+pnpm build              # Production build
+pnpm build:mac          # macOS .dmg
+pnpm build:win          # Windows installer (future)
+pnpm build:linux        # Linux package (future)
 ```
+
+### macOS System Audio Setup
+
+To enable system audio recording on macOS:
+
+1. Build and run the app once
+2. Attempt to start a system audio recording
+3. Open **System Settings** > **Privacy & Security** > **Screen Recording**
+4. Enable permission for Bridge
+5. Restart the app
+6. System audio recording will now work
+
+Note: macOS requires Screen Recording permission to capture system audio. There is no automatic permission prompt API - users must manually enable it in System Settings.
 
 ## Project Structure
 
 ```
-recording-app/
-├── packages/
-│   ├── mobile/          # iOS app (Expo)
-│   ├── desktop/         # Electron app
-│   └── shared/          # Shared code (80-90%)
+bridge/
+├── src/
+│   ├── main/                    # Electron main process
+│   │   ├── index.ts
+│   │   ├── ipc-handlers.ts
+│   │   └── audio/
+│   │       └── macos-capture.ts # ScreenCaptureKit integration
+│   ├── renderer/                # Electron renderer process
+│   │   ├── App.tsx
+│   │   ├── components/
+│   │   │   ├── RecordButton.tsx
+│   │   │   ├── RecordingTimer.tsx
+│   │   │   └── RecordingsList.tsx
+│   │   ├── hooks/
+│   │   │   ├── useRecording.ts
+│   │   │   └── usePermissions.ts
+│   │   └── store/
+│   │       └── recordingStore.ts  # Zustand state
+│   └── preload.ts               # Electron preload script
 ├── native-modules/
-│   └── electron-screencapturekit/   # macOS system audio
+│   └── screencapturekit/        # Native Node.js addon for macOS
+│       ├── src/
+│       │   ├── binding.cpp
+│       │   └── screencapture.mm
+│       └── binding.gyp
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   └── INTERRUPTIONS.md
+│   └── ARCHITECTURE.md
 └── PLAN.md
 ```
 
 ## Usage
 
-### iOS
+### Desktop
 
-1. Launch app
-2. Grant microphone permission
-3. Tap record button
-4. Recording continues in background
-5. Stop when done
-6. Files saved to app documents directory
+1. Launch Bridge
+2. Select recording mode:
+   - **Microphone**: Records input from your microphone
+   - **System Audio** (macOS only): Records output from your computer (what you hear)
+3. For system audio: Ensure Screen Recording permission is enabled (see macOS System Audio Setup above)
+4. Click record button
+5. Recording runs in foreground; minimize window to continue recording
+6. Click stop when done
+7. Files saved to `~/Documents/Bridge/Recordings/`
 
-**Interruptions:**
-- Incoming call: Recording pauses, resumes if declined
-- Call accepted: Partial recording saved
-- Other interruptions: Automatic pause/resume
+**System audio (macOS):** Captures output from telehealth apps (Zoom, Teams, Google Meet, etc.)
 
-### Desktop (macOS)
-
-1. Launch app
-2. Select mode: Microphone or System Audio
-3. For system audio: Grant Screen Recording permission in System Preferences
-4. Click record
-5. Stop when done
-6. Files saved to ~/Documents/Recordings/
-
-**System audio:** Captures output from telehealth apps (Zoom, Teams, browsers)
+**Storage location:** Recordings are saved with timestamp filenames: `recording_YYYYMMDD_HHMMSS.m4a`
 
 ## Development
 
 ### Scripts
 
-**Root:**
 ```bash
-pnpm build          # Build all packages
-pnpm dev            # Start all in development mode
-pnpm typecheck      # TypeScript check all packages
-```
-
-**Mobile:**
-```bash
-pnpm start          # Expo dev server
-pnpm ios            # iOS simulator
-pnpm ios --device   # Physical device
-```
-
-**Desktop:**
-```bash
-pnpm dev            # Electron development mode
+pnpm dev            # Start Electron in development mode with hot reload
 pnpm build          # Production build
-pnpm build:mac      # macOS .dmg
+pnpm build:mac      # Build macOS .dmg installer
+pnpm build:win      # Build Windows installer (future)
+pnpm build:linux    # Build Linux package (future)
+pnpm typecheck      # Run TypeScript type checking
+pnpm lint           # Run ESLint
+pnpm format         # Format code with Prettier
 ```
 
-**Shared:**
+### Native Module Development (macOS)
+
+If you're working on the ScreenCaptureKit native module:
+
 ```bash
-pnpm build          # Build shared package
-pnpm dev            # Watch mode
+cd native-modules/screencapturekit
+
+# Rebuild after C++/Objective-C changes
+pnpm rebuild
+
+# Or use node-gyp directly
+node-gyp rebuild
 ```
 
 ## Building for Production
 
-### iOS
+### macOS
 
 ```bash
-cd packages/mobile
-
-# Development build
-eas build --profile development --platform ios
-
-# Production build
-eas build --profile production --platform ios
-
-# Submit to App Store
-eas submit --platform ios
-```
-
-### Desktop
-
-```bash
-cd packages/desktop
-
-# macOS
+# Build .dmg installer
 pnpm build:mac
 
-# Windows (future)
-pnpm build:win
+# Output: dist/Bridge-1.0.0.dmg
+# Installer includes code signing (if certificates configured)
+# Distribution: Direct download or Mac App Store submission
+```
 
-# Linux (future)
+**Code signing (optional):**
+- Configure signing certificate in `electron-builder.json`
+- Set `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables
+- Required for notarization and Mac App Store
+
+### Windows (future)
+
+```bash
+pnpm build:win
+# Output: dist/Bridge-Setup-1.0.0.exe
+```
+
+### Linux (future)
+
+```bash
 pnpm build:linux
+# Output: dist/Bridge-1.0.0.AppImage
 ```
 
 ## Platform Notes
 
-### iOS
-
-- Microphone recording only (system audio impossible on iOS)
-- Background recording supported
-- Requires iOS 17.0+
-- UIBackgroundModes: ["audio"] configured
-
 ### macOS
 
-- Microphone and system audio
-- System audio requires macOS 12.3+ (ScreenCaptureKit)
-- User must manually enable Screen Recording in System Preferences
-- No automatic permission request available
+- **Microphone**: Standard audio input, works on all macOS versions
+- **System audio**: Requires macOS 12.3+ (ScreenCaptureKit framework)
+- **Permission**: Screen Recording permission required for system audio
+  - No automatic prompt API exists
+  - User must manually enable in System Settings > Privacy & Security > Screen Recording
+  - App detects permission status and guides user
+- **Architecture**: Supports both Intel and Apple Silicon (universal build)
 
-### Windows/Linux
+### Windows
 
-- Microphone recording (implemented)
-- System audio (future - WASAPI for Windows, PulseAudio for Linux)
+- **Microphone**: Standard audio input supported
+- **System audio**: Planned (WASAPI loopback recording)
+- **Permission**: Microphone permission handled by Windows
 
-## Interruption Handling
+### Linux
 
-### iOS Interruptions
+- **Microphone**: Standard audio input supported
+- **System audio**: Planned (PulseAudio monitor source)
+- **Permission**: Handled by distribution-specific mechanisms
 
-**Types:**
-- Phone calls (cellular, FaceTime, VoIP)
-- Alarms and timers
-- Siri
-- Emergency alerts
-- Other apps requesting audio
+## Error Handling
+
+### Desktop Interruptions
+
+**System events handled:**
+- Audio device changes (unplugged headphones, etc.)
+- System sleep/wake
+- Low disk space
+- App window minimize/maximize
 
 **Behavior:**
-- Interruption begins: Recording pauses automatically
-- User declines: Recording resumes automatically
-- User accepts: Recording stops, partial file saved with metadata
-
-**Implementation:**
-- AVAudioSession interruption notifications
-- Recording state persisted
-- Metadata tracks interruption count
-
-### Testing Requirements
-
-Critical scenarios:
-1. Record, receive call, decline, verify continuous
-2. Record, receive call, accept, verify partial saved
-3. Record, trigger alarm, verify pause/resume
-4. Record, background for 5 minutes, verify continues
-5. Record with low storage, verify warning
-
-See `docs/INTERRUPTIONS.md` for detailed testing guide.
+- Device changes: Recording continues with new default device
+- System sleep: Recording pauses, resumes on wake
+- Low disk space: Warning at <500MB, blocked at <100MB
+- Window state: Recording continues regardless of window state
 
 ## File Format
 
 - Format: .m4a (AAC encoding)
 - Quality: 48kHz stereo, 192kbps
 - Naming: `recording_YYYYMMDD_HHMMSS.m4a`
-- Metadata: JSON in AsyncStorage/localStorage
+- Metadata: JSON in localStorage
 
 ```typescript
 interface Recording {
   id: string;
   filename: string;
-  startTime: number;
+  startTime: number;          // Unix timestamp
   endTime: number;
-  duration: number;
-  size: number;
+  duration: number;           // seconds
+  size: number;               // bytes
   recordingMode: 'microphone' | 'system';
-  interrupted: boolean;
-  interruptionCount: number;
-  platform: 'ios' | 'macos' | 'windows' | 'linux';
+  platform: 'macos' | 'windows' | 'linux';
 }
 ```
 
 ## Storage
 
-**iOS:**
-- Location: App documents directory
-- Backed up to iCloud (if enabled)
-- Accessible via Files app
+**Default location:** `~/Documents/Bridge/Recordings/`
 
-**Desktop:**
-- Location: `~/Documents/Recordings/` (default)
-- User-configurable
+- User-configurable in settings
 - Direct filesystem access
+- Compatible with all audio players
+- No cloud sync (local storage only)
 
 ## Troubleshooting
-
-### iOS
-
-**"Permission denied"**
-- Settings → Privacy & Security → Microphone → Enable for app
-- Rebuild app after app.json changes
-
-**"Recording won't resume after call"**
-- Check UIBackgroundModes configured
-- Verify setAudioModeAsync called with correct options
-
-**"App crashes on recording"**
-- Check iOS version (17.0+ required)
-- Verify expo-audio installed correctly
-- Check Expo SDK version (54+ required, expo-av removed)
 
 ### macOS
 
 **"System audio not working"**
-- Verify macOS 12.3+
-- System Preferences → Privacy & Security → Screen Recording
-- Enable permission for app
-- Restart app
+- Verify macOS 12.3 or later: `sw_vers`
+- Open System Settings → Privacy & Security → Screen Recording
+- Enable permission for Bridge
+- Restart app after enabling permission
 
-**"Permission popup doesn't appear"**
-- Screen Recording permission has no automatic request
-- App must guide user to System Preferences manually
+**"Permission dialog doesn't appear"**
+- Screen Recording permission has no automatic prompt API
+- App will show instructions to manually enable in System Settings
 
 **"Native module build fails"**
 - Install Xcode Command Line Tools: `xcode-select --install`
-- Install node-gyp: `npm install -g node-gyp`
-- Verify binding.gyp configuration
+- Install node-gyp globally: `npm install -g node-gyp`
+- Verify Python is installed (required by node-gyp)
+- Check binding.gyp configuration in `native-modules/screencapturekit/`
 
-### Monorepo
+**"App won't launch after build"**
+- Check Console.app for crash logs
+- Verify all dependencies installed: `pnpm install`
+- Try clean rebuild: `rm -rf node_modules dist && pnpm install && pnpm build`
+
+### Windows
+
+**"Microphone not detected"**
+- Check Windows sound settings: Settings → System → Sound
+- Verify microphone enabled and set as default input
+- Grant microphone permission in Windows Privacy settings
+
+### General
 
 **"Dependencies not resolving"**
-- Run `pnpm install` from root
-- Check `pnpm-workspace.yaml`
-- Verify workspace protocol: `"@recording-app/shared": "workspace:*"`
+- Run `pnpm install` from root directory
+- Clear pnpm cache: `pnpm store prune`
+- Verify Node.js version: `node --version` (should be 20+)
 
-**"TypeScript errors in shared package"**
-- Build shared first: `cd packages/shared && pnpm build`
-- Check tsconfig.json paths configuration
+**"TypeScript errors"**
+- Run type check: `pnpm typecheck`
+- Verify tsconfig.json configuration
+- Check for missing type definitions
 
 ## Out of Scope
 
@@ -324,17 +314,17 @@ Files are accessible via filesystem for manual handling.
 
 - [PLAN.md](./PLAN.md) - Complete implementation specification
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - Technical architecture
-- [docs/INTERRUPTIONS.md](./docs/INTERRUPTIONS.md) - Interruption handling guide
-- [expo-audio Documentation](https://docs.expo.dev/versions/latest/sdk/audio/)
+- [Electron Documentation](https://www.electronjs.org/docs/latest/)
 - [ScreenCaptureKit (Apple)](https://developer.apple.com/documentation/screencapturekit)
+- [Node-API Documentation](https://nodejs.org/api/n-api.html)
 
 ## Contributing
 
-1. Create feature branch
-2. Make changes (prefer shared code over platform-specific)
-3. Test on both iOS and desktop
-4. Ensure TypeScript passes strict checks
-5. Test interruption scenarios thoroughly
+1. Create feature branch from `main`
+2. Make changes
+3. Test on target platforms (macOS, Windows, Linux)
+4. Ensure TypeScript passes strict checks: `pnpm typecheck`
+5. Format code: `pnpm format`
 6. Submit pull request
 
 ## License
@@ -344,5 +334,6 @@ Files are accessible via filesystem for manual handling.
 ---
 
 **Version**: 1.0.0
-**Focus**: Minimal, reliable recording for telehealth
-**Last Updated**: 2025-01-05
+**Project Name**: Bridge
+**Focus**: Desktop audio recording for telehealth
+**Last Updated**: 2025-01-13

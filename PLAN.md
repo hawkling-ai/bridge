@@ -1,102 +1,99 @@
-# Recording App - Implementation Plan
+# Bridge - Desktop Recording App Implementation Plan
 
 ## Purpose
 
-Reliable audio recording for telehealth sessions. Captures audio from telehealth platforms (Zoom, Teams, browser-based) with robust handling of interruptions (phone calls, system alerts). Minimal scope: recording only, no playback or transcription.
+Electron-based desktop audio recording for telehealth sessions. Captures audio from telehealth platforms (Zoom, Teams, browser-based) with system audio support on macOS. Minimal scope: recording only, no playback or transcription.
 
 ## Use Case
 
-Medical professionals conducting telehealth visits need to record sessions reliably across different platforms and devices. The app must handle real-world interruptions without losing audio data.
+Medical professionals conducting telehealth visits need to record sessions reliably on desktop. The app must capture system audio (what you hear from the computer) and handle real-world interruptions (device changes, system sleep) without losing audio data.
 
 ## Architecture
 
-**Monorepo with 80-90% code sharing:**
-- Desktop (macOS/Windows/Linux): Electron + React Native Web
-- Mobile (iOS): React Native + Expo
-- Shared package: UI components, business logic, state management
+**Single Electron application:**
+- Desktop (macOS/Windows/Linux): Electron + React
+- Native module: ScreenCaptureKit (macOS) for system audio
+- State management: Zustand
+- Build: Vite
 
 **Why this stack:**
-- React Native Web enables component reuse across platforms
-- Electron provides native desktop capabilities
-- Expo simplifies iOS development with modern APIs
+- Electron provides cross-platform desktop capabilities
+- React for modern UI development
+- Native modules for platform-specific audio capture
 - Single TypeScript codebase
 
 ## Technology Stack
 
 **Core:**
+- Electron 32.x
 - React 18.3.x
 - TypeScript 5.3+ (strict mode)
 - Node.js 20+ LTS
 
-**Mobile (iOS):**
-- React Native 0.76.x
-- Expo SDK 54
-- expo-audio 14.0 (Note: expo-av deprecated, removed in SDK 54)
-
-**Desktop:**
-- Electron 32.x
-- React Native Web 0.19.x
+**Frontend:**
 - Vite (bundler)
-
-**Shared:**
 - Zustand (state management)
-- pnpm workspaces + Turborepo (monorepo)
+- React hooks for UI logic
+
+**Native (macOS):**
+- Node-API (N-API) for native bindings
+- ScreenCaptureKit framework for system audio
+- Objective-C++/C++ for native module
+
+**Build & Package:**
+- electron-builder (packaging)
+- node-gyp (native module compilation)
+- pnpm (package manager)
 
 ## Feature Specification
 
 ### 1. Audio Recording
 
 **Microphone Recording**
-- Platform: iOS and desktop
+- Platform: macOS, Windows, Linux
 - Quality: 48kHz stereo, AAC encoding, 192kbps
 - Format: .m4a
-- Background recording: Supported on iOS
+- Uses Electron's native audio APIs
 
 **System Audio Recording**
 - Platform: macOS only (ScreenCaptureKit framework)
-- Captures audio output from telehealth apps
+- Captures audio output from telehealth apps (Zoom, Teams, browsers)
 - Requires Screen Recording permission
 - Quality: Same as microphone
 
-**Unsupported:**
-- iOS system audio (Apple security restriction)
-- Windows/Linux system audio (future)
+**Future platforms:**
+- Windows system audio (WASAPI loopback)
+- Linux system audio (PulseAudio monitor)
 
-### 2. Interruption Handling
+### 2. Desktop Event Handling
 
-**Critical requirement:** Must not lose audio during interruptions.
+**Critical requirement:** Must not lose audio during system events.
 
-**iOS Interruptions:**
-- Incoming phone calls
-- FaceTime calls
-- Alarms and timers
-- Siri activation
-- Other apps requesting audio focus
+**System Events:**
+- Audio device changes (headphones unplugged, new device connected)
+- System sleep/wake cycles
+- Application window minimize/focus changes
+- Low disk space warnings
 
 **Handling strategy:**
 ```
-Interruption begins -> Pause recording
-User declines interruption -> Resume recording
-User accepts interruption -> Stop and save partial recording
+Device change -> Switch to new default device, continue recording
+System sleep -> Pause recording, save state
+System wake -> Resume recording from saved state
+Low disk space -> Warn user, stop if critical
 ```
 
 **Implementation:**
-- Use AVAudioSession interruption notifications
-- Save recording state on interruption
-- Mark recordings with interruption metadata
-- Resume automatically when possible
-
-**Desktop Interruptions:**
-- System sleep/wake
-- Audio device changes
-- App focus changes
-- Handle gracefully, continue recording
+- Monitor Electron system events
+- Persist recording state to localStorage
+- Handle audio device enumeration and changes
+- Display clear user notifications for events
 
 ### 3. File Management
 
 **Storage:**
-- iOS: App documents directory
-- Desktop: User's documents/recordings folder
+- Default: `~/Documents/Bridge/Recordings/`
+- User-configurable location
 - Filename format: `recording_YYYYMMDD_HHMMSS.m4a`
 
 **Metadata:**
@@ -109,66 +106,76 @@ interface Recording {
   duration: number;         // seconds
   size: number;             // bytes
   recordingMode: 'microphone' | 'system';
-  interrupted: boolean;
-  interruptionCount: number;
-  platform: 'ios' | 'macos' | 'windows' | 'linux';
+  platform: 'macos' | 'windows' | 'linux';
 }
 ```
 
 **Operations:**
-- List all recordings
+- List all recordings (read from disk + metadata)
 - Delete recording (file + metadata)
 - Query metadata
 - Calculate total storage used
+- Show in Finder/Explorer (reveal file)
 
 **Persistence:**
-- iOS: AsyncStorage for metadata
-- Desktop: localStorage for metadata
-- Files stored in filesystem
+- Metadata: localStorage in Electron renderer
+- Files: Direct filesystem storage
+- Cross-platform paths using Node.js path module
 
 ### 4. Permissions
 
-**iOS:**
-- Microphone: NSMicrophoneUsageDescription in Info.plist
-- Background audio: UIBackgroundModes: ["audio"]
-- Request on first recording attempt
-- Handle all permission states: not-determined, denied, granted, restricted
-
 **macOS:**
-- Microphone: Standard permission request
+- Microphone: Standard permission request via Electron
+  - Automatic system prompt on first use
+  - Entitlements configured in .plist
 - Screen Recording: Required for system audio
-  - User must manually enable in System Preferences
-  - App detects and guides user to settings
+  - No automatic prompt API available
+  - User must manually enable in System Settings > Privacy & Security > Screen Recording
+  - App detects permission status and shows instructions
+
+**Windows:**
+- Microphone: Windows Privacy settings
+- Automatic permission prompt on first recording
+
+**Linux:**
+- Microphone: Handled by PulseAudio/ALSA
+- Generally permissive, varies by distribution
 
 **Permission flow:**
-1. Check permission status
-2. Request if not-determined
-3. Show clear error if denied
-4. Provide link to settings
+1. Check permission status via system APIs
+2. Request if possible (mic) or guide user (screen recording)
+3. Show clear error if denied with instructions
+4. Provide buttons to open System Settings
 
 ### 5. User Interface
 
-**Minimal design principle:** Function over form.
+**Minimal design principle:** Function over form, native desktop feel.
 
-**Recording Screen:**
-- Record button (single action: start/stop)
-- Duration timer (active during recording)
-- Recording mode selector (desktop only: microphone/system)
-- Permission status indicator
-- Available storage display
+**Main Window:**
+- Recording mode selector: Microphone / System Audio
+- Large record button (red when recording)
+- Duration timer (shows elapsed time during recording)
+- Permission status indicators
+- Available disk space display
 
-**Recordings List:**
-- Chronological list, newest first
-- Per recording: filename, duration, size, timestamp
-- Delete button
-- Total count and total size
-- No preview, no playback controls
+**Recordings List View:**
+- Table/list view, chronological (newest first)
+- Columns: Filename, Duration, Size, Date/Time, Mode
+- Actions per recording:
+  - Delete button
+  - "Show in Finder/Explorer" button
+- Total recordings count and total size footer
+
+**Settings Panel:**
+- Recording save location picker
+- Audio quality settings
+- Launch at startup toggle
 
 **No features:**
-- Playback UI (out of scope)
+- Built-in audio playback (use system player)
 - Waveform visualization
-- Editing tools
-- Export/share functionality (files accessible via filesystem)
+- Audio editing tools
+- Cloud sync or sharing features
 
 ### 6. Error Handling
 
@@ -202,238 +209,262 @@ interface Recording {
 ### 7. Reliability
 
 **Crash recovery:**
-- Periodically save recording state (every 30 seconds)
+- Periodically save recording state to disk (every 30 seconds)
 - On app restart, check for incomplete recordings
-- Offer to recover or discard
+- Offer to recover partial recording or discard
 
 **Storage monitoring:**
-- Check available storage before recording
+- Check available disk space before recording starts
 - Warn at < 500MB available
 - Block recording at < 100MB available
-- Display available storage in UI
+- Display available storage in UI footer
 
-**Background recording (iOS):**
-- Audio session configured for background
-- Recording continues when app backgrounded
-- Recording continues when screen locked
-- Stop recording on app termination (save file)
+**System sleep handling:**
+- Detect system sleep events via Electron
+- Pause recording and save state
+- Resume automatically on wake
+- Mark recordings that were interrupted
 
 **Data integrity:**
-- Flush audio buffer regularly
-- Verify file written successfully
-- Checksum validation (optional)
+- Flush audio buffer regularly (every 5 seconds)
+- Verify file written successfully after stop
+- Use atomic file operations
+- Handle write errors gracefully
 
 ## Project Structure
 
 ```
-recording-app/
-├── packages/
-│   ├── mobile/                           # iOS app
-│   │   ├── app/
-│   │   │   ├── (tabs)/
-│   │   │   │   ├── index.tsx            # Recording screen
-│   │   │   │   └── recordings.tsx       # List screen
-│   │   │   └── _layout.tsx
-│   │   ├── app.json                     # Expo config
-│   │   └── package.json
+bridge/
+├── src/
+│   ├── main/                        # Electron main process
+│   │   ├── index.ts                 # Main entry point
+│   │   ├── ipc-handlers.ts          # IPC communication handlers
+│   │   ├── audio/
+│   │   │   ├── microphone.ts        # Cross-platform mic recording
+│   │   │   └── macos-system.ts      # macOS system audio
+│   │   ├── file-manager.ts          # Recording file operations
+│   │   └── permissions.ts           # Permission checking
 │   │
-│   ├── desktop/                          # Electron app
-│   │   ├── src/
-│   │   │   ├── main/                    # Main process
-│   │   │   │   ├── index.ts
-│   │   │   │   ├── ipc-handlers.ts
-│   │   │   │   └── audio/
-│   │   │   │       └── macos-capture.ts
-│   │   │   ├── renderer/                # Renderer process
-│   │   │   │   └── index.tsx
-│   │   │   └── preload.ts
-│   │   ├── electron-builder.json
-│   │   └── package.json
+│   ├── renderer/                    # Electron renderer process
+│   │   ├── App.tsx                  # Main React app
+│   │   ├── components/
+│   │   │   ├── RecordButton.tsx
+│   │   │   ├── RecordingTimer.tsx
+│   │   │   ├── RecordingsList.tsx
+│   │   │   ├── ModeSelector.tsx
+│   │   │   └── PermissionStatus.tsx
+│   │   ├── hooks/
+│   │   │   ├── useRecording.ts
+│   │   │   ├── usePermissions.ts
+│   │   │   └── useRecordingsList.ts
+│   │   ├── store/
+│   │   │   └── recordingStore.ts    # Zustand state
+│   │   ├── types/
+│   │   │   └── recording.types.ts
+│   │   └── index.html               # Renderer entry point
 │   │
-│   └── shared/                           # Shared code (80-90%)
-│       ├── src/
-│       │   ├── features/recording/
-│       │   │   ├── components/
-│       │   │   │   ├── RecordButton.tsx
-│       │   │   │   ├── RecordingTimer.tsx
-│       │   │   │   └── RecordingsList.tsx
-│       │   │   ├── hooks/
-│       │   │   │   ├── useRecording.ts
-│       │   │   │   ├── useInterruptionHandler.ts
-│       │   │   │   └── usePermissions.ts
-│       │   │   ├── store/
-│       │   │   │   └── recordingStore.ts    # Zustand
-│       │   │   ├── services/
-│       │   │   │   ├── audioService.ts       # Platform abstraction
-│       │   │   │   └── storageService.ts
-│       │   │   └── types/
-│       │   │       └── recording.types.ts
-│       │   └── utils/
-│       │       ├── platform.ts               # Platform detection
-│       │       └── formatters.ts
-│       └── package.json
+│   └── preload.ts                   # Electron preload script
 │
 ├── native-modules/
-│   └── electron-screencapturekit/       # Node.js addon for macOS
+│   └── screencapturekit/            # macOS native module
 │       ├── src/
-│       │   ├── binding.cpp               # Node-API bindings
-│       │   └── screencapture.mm          # ScreenCaptureKit wrapper
-│       ├── binding.gyp
-│       └── package.json
+│       │   ├── binding.cpp          # Node-API bindings
+│       │   └── screencapture.mm     # ScreenCaptureKit wrapper
+│       ├── binding.gyp              # node-gyp config
+│       ├── package.json
+│       └── README.md
 │
 ├── docs/
-│   ├── ARCHITECTURE.md                   # Technical architecture
-│   └── INTERRUPTIONS.md                  # Interruption handling guide
+│   └── ARCHITECTURE.md              # Technical architecture
 │
-├── pnpm-workspace.yaml
-├── turbo.json
-└── package.json
+├── electron-builder.json            # electron-builder config
+├── vite.config.ts                   # Vite bundler config
+├── tsconfig.json                    # TypeScript config
+├── package.json
+└── PLAN.md                          # This file
 ```
 
 ## Implementation Details
 
-### iOS Recording with Interruption Handling
+### Electron Main Process - Recording Management
 
 ```typescript
-import {
-  useAudioRecorder,
-  useAudioRecorderState,
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-} from 'expo-audio';
-import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+// src/main/ipc-handlers.ts
+import { ipcMain } from 'electron';
+import { MicrophoneRecorder } from './audio/microphone';
+import { MacOSSystemAudioRecorder } from './audio/macos-system';
 
-export function useRecordingWithInterruptions() {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const state = useAudioRecorderState(recorder);
+let currentRecorder: MicrophoneRecorder | MacOSSystemAudioRecorder | null = null;
 
-  const [interrupted, setInterrupted] = useState(false);
-  const [interruptionCount, setInterruptionCount] = useState(0);
+ipcMain.handle('recording:start', async (event, options: {
+  mode: 'microphone' | 'system',
+  outputPath: string
+}) => {
+  const { mode, outputPath } = options;
 
-  // Configure audio session
-  useEffect(() => {
-    (async () => {
-      await AudioModule.requestRecordingPermissionsAsync();
+  if (mode === 'system') {
+    if (process.platform !== 'darwin') {
+      throw new Error('System audio only supported on macOS');
+    }
 
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-        shouldPlayInBackground: true,
-        staysActiveInBackground: true,
-      });
-    })();
-  }, []);
+    const hasPermission = await checkScreenRecordingPermission();
+    if (!hasPermission) {
+      throw new Error('Screen Recording permission required. Please enable in System Settings.');
+    }
 
-  // Handle interruptions
-  useEffect(() => {
-    const sub = AudioModule.addAudioSessionInterruptionListener((event) => {
-      if (event.type === 'began') {
-        setInterrupted(true);
-        setInterruptionCount(prev => prev + 1);
-      } else if (event.type === 'ended') {
-        if (event.shouldResume) {
-          setInterrupted(false);
-        } else {
-          stopRecording();
-        }
-      }
+    currentRecorder = new MacOSSystemAudioRecorder();
+  } else {
+    currentRecorder = new MicrophoneRecorder();
+  }
+
+  await currentRecorder.start(outputPath);
+
+  return { success: true, startTime: Date.now() };
+});
+
+ipcMain.handle('recording:stop', async () => {
+  if (!currentRecorder) {
+    throw new Error('No active recording');
+  }
+
+  const result = await currentRecorder.stop();
+  currentRecorder = null;
+
+  return result;
+});
+```
+
+### macOS System Audio via ScreenCaptureKit
+
+```typescript
+// src/main/audio/macos-system.ts
+import { screencapturekit } from '../../native-modules/screencapturekit';
+
+export class MacOSSystemAudioRecorder {
+  private recording = false;
+  private outputPath = '';
+
+  async start(outputPath: string) {
+    this.outputPath = outputPath;
+    this.recording = true;
+
+    await screencapturekit.startAudioCapture({
+      outputPath,
+      sampleRate: 48000,
+      channels: 2,
+      bitrate: 192000,
     });
+  }
 
-    return () => sub.remove();
-  }, []);
+  async stop() {
+    if (!this.recording) return null;
 
-  // Handle app state changes
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      // Recording continues in background
-      console.log('App state:', state);
-    });
+    this.recording = false;
+    const stats = await screencapturekit.stopAudioCapture();
 
-    return () => sub.remove();
-  }, []);
-
-  const startRecording = async () => {
-    setInterrupted(false);
-    setInterruptionCount(0);
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-  };
-
-  const stopRecording = async () => {
-    await recorder.stop();
     return {
-      uri: recorder.uri,
-      duration: state.durationMillis / 1000,
-      interrupted,
-      interruptionCount,
+      filePath: this.outputPath,
+      duration: stats.duration,
+      size: stats.fileSize,
     };
-  };
-
-  return {
-    startRecording,
-    stopRecording,
-    isRecording: state.isRecording,
-    duration: state.durationMillis,
-    interrupted,
-    interruptionCount,
-  };
+  }
 }
 ```
 
-### macOS System Audio via Electron IPC
+### React Renderer - Recording Hook
 
 ```typescript
-// Main process
-ipcMain.handle('recording:start', async (event, mode: 'mic' | 'system') => {
-  if (mode === 'system' && process.platform === 'darwin') {
-    const hasPermission = await checkScreenRecordingPermission();
-    if (!hasPermission) {
-      throw new Error('Screen Recording permission required');
+// src/renderer/hooks/useRecording.ts
+import { useState, useCallback } from 'react';
+import { useRecordingStore } from '../store/recordingStore';
+
+export function useRecording() {
+  const [isRecording, setIsRecording] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const store = useRecordingStore();
+
+  const startRecording = useCallback(async (mode: 'microphone' | 'system') => {
+    const timestamp = Date.now();
+    const filename = `recording_${formatTimestamp(timestamp)}.m4a`;
+    const outputPath = await window.electron.getRecordingPath(filename);
+
+    try {
+      await window.electron.recording.start({ mode, outputPath });
+      setIsRecording(true);
+
+      // Start duration timer
+      const interval = setInterval(() => {
+        setDuration(d => d + 1);
+      }, 1000);
+
+      store.setActiveRecording({ filename, startTime: timestamp, mode });
+
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      throw error;
     }
+  }, [store]);
 
-    const addon = require('@recording-app/electron-screencapturekit');
-    await addon.startCapture({
-      source: 'display',
-      quality: 'high',
-      outputPath: generateFilePath(),
-    });
-  }
-});
+  const stopRecording = useCallback(async () => {
+    try {
+      const result = await window.electron.recording.stop();
+      setIsRecording(false);
+      setDuration(0);
 
-// Renderer process
-async function startSystemAudioRecording() {
-  await window.electron.recording.start('system');
+      // Save metadata
+      await store.saveRecording({
+        ...result,
+        id: crypto.randomUUID(),
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      throw error;
+    }
+  }, [store]);
+
+  return {
+    isRecording,
+    duration,
+    startRecording,
+    stopRecording,
+  };
 }
 ```
 
 ## Configuration
 
-### app.json (iOS)
+### package.json
 
 ```json
 {
-  "expo": {
-    "name": "Recording App",
-    "slug": "recording-app",
-    "version": "1.0.0",
-    "platforms": ["ios"],
-    "plugins": [
-      ["expo-audio", {
-        "microphonePermission": "Required to record telehealth sessions."
-      }],
-      "expo-router"
-    ],
-    "ios": {
-      "bundleIdentifier": "com.recordingapp.ios",
-      "supportsTablet": true,
-      "deploymentTarget": "17.0",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Record telehealth sessions.",
-        "UIBackgroundModes": ["audio"]
-      }
-    }
+  "name": "bridge",
+  "version": "1.0.0",
+  "description": "Desktop audio recording for telehealth",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  },
+  "dependencies": {
+    "electron": "^32.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "electron-builder": "^24.0.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
   }
 }
 ```
@@ -442,12 +473,26 @@ async function startSystemAudioRecording() {
 
 ```json
 {
-  "appId": "com.recordingapp.desktop",
-  "productName": "Recording App",
+  "appId": "com.bridge.desktop",
+  "productName": "Bridge",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
   "mac": {
     "target": ["dmg"],
     "category": "public.app-category.medical",
-    "entitlements": "entitlements.mac.plist"
+    "entitlements": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "build/icon.ico"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "category": "Audio"
   }
 }
 ```
@@ -462,155 +507,186 @@ async function startSystemAudioRecording() {
 <dict>
   <key>com.apple.security.device.audio-input</key>
   <true/>
+  <key>com.apple.security.device.microphone</key>
+  <true/>
 </dict>
 </plist>
 ```
 
+### native-modules/screencapturekit/binding.gyp
+
+```python
+{
+  "targets": [{
+    "target_name": "screencapturekit",
+    "sources": [
+      "src/binding.cpp",
+      "src/screencapture.mm"
+    ],
+    "include_dirs": [
+      "<!@(node -p \"require('node-addon-api').include\")"
+    ],
+    "dependencies": [
+      "<!(node -p \"require('node-addon-api').gyp\")"
+    ],
+    "conditions": [
+      ["OS=='mac'", {
+        "xcode_settings": {
+          "OTHER_CFLAGS": ["-ObjC++", "-std=c++17"],
+          "MACOSX_DEPLOYMENT_TARGET": "12.3"
+        },
+        "link_settings": {
+          "libraries": [
+            "-framework ScreenCaptureKit",
+            "-framework AVFoundation",
+            "-framework CoreMedia"
+          ]
+        }
+      }]
+    ]
+  }]
+}
+```
+
 ## Testing Requirements
 
-### Interruption Testing (Critical)
+### System Event Testing (Critical)
 
 **Test matrix:**
-1. Record 2 minutes, receive call, decline, verify continuous recording
-2. Record 2 minutes, receive call, accept, verify partial file saved
-3. Record, trigger alarm, verify pause/resume
-4. Record, activate Siri, verify pause/resume
-5. Record, background app for 5 minutes, verify continues
-6. Record, lock screen, unlock, verify continues
-7. Record with low storage (< 200MB), verify warning
-8. Record with critical storage (< 100MB), verify blocked
+1. Record microphone audio for 2 minutes, verify file saved
+2. Record system audio (macOS), verify output captured
+3. Unplug headphones during recording, verify continues with default device
+4. Put system to sleep during recording, wake, verify pause/resume
+5. Minimize app window, verify recording continues
+6. Record with low storage (< 200MB), verify warning displayed
+7. Record with critical storage (< 100MB), verify recording blocked
 
-**Telehealth platform testing:**
+**Telehealth platform testing (macOS system audio):**
 - Zoom desktop client
 - Microsoft Teams desktop client
-- Google Meet (browser)
+- Google Meet (Chrome/Safari)
 - Doxy.me (browser)
 - Verify audio captured correctly from each
 
 ### Platform Testing
 
-**iOS:**
-- iPhone 12 or later (iOS 17+)
-- iPad (iPadOS 17+)
-- Various interruption scenarios
-- Background recording for extended periods
-
 **macOS:**
 - macOS 12.3+ (Monterey or later)
-- Intel and Apple Silicon
-- Multiple display configurations
-- Permission flow verification
+- Test on Intel and Apple Silicon Macs
+- Multiple display configurations (for screen recording permission)
+- Permission flow verification for microphone and screen recording
+- System sleep/wake scenarios
+
+**Windows:**
+- Windows 10/11
+- Microphone recording verification
+- Permission handling
+
+**Linux:**
+- Ubuntu 22.04+ or equivalent
+- Microphone recording verification
+- PulseAudio/ALSA compatibility
 
 ## Build & Deployment
 
-### iOS
+### Development
 
 ```bash
-cd packages/mobile
+# Install dependencies
+pnpm install
 
-# Install EAS CLI
-npm install -g eas-cli
+# Build native module (macOS only)
+cd native-modules/screencapturekit && pnpm rebuild && cd ../..
 
-# Login
-eas login
-
-# Configure
-eas build:configure
-
-# Build for development
-eas build --profile development --platform ios
-
-# Build for production
-eas build --profile production --platform ios
+# Start development server
+pnpm dev
 ```
 
-### macOS Desktop
+### Production Builds
 
+**macOS:**
 ```bash
-cd packages/desktop
-
-# Development
-pnpm dev
-
-# Build
 pnpm build:mac
+# Output: dist/Bridge-1.0.0.dmg
+# For distribution: Code sign and notarize
+```
+
+**Windows:**
+```bash
+pnpm build:win
+# Output: dist/Bridge-Setup-1.0.0.exe
+```
+
+**Linux:**
+```bash
+pnpm build:linux
+# Output: dist/Bridge-1.0.0.AppImage
 ```
 
 ## Dependencies
 
-### Root
-
-```json
-{
-  "name": "recording-app",
-  "private": true,
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev --parallel"
-  },
-  "devDependencies": {
-    "turbo": "^2.0.0",
-    "typescript": "^5.3.0"
-  }
-}
-```
-
-### Mobile
-
-```json
-{
-  "dependencies": {
-    "expo": "~54.0.0",
-    "expo-audio": "~14.0.0",
-    "expo-router": "~4.0.0",
-    "expo-file-system": "~18.0.0",
-    "@recording-app/shared": "workspace:*"
-  }
-}
-```
-
-### Desktop
+### Main Application
 
 ```json
 {
   "dependencies": {
     "electron": "^32.0.0",
-    "@recording-app/shared": "workspace:*",
-    "@recording-app/electron-screencapturekit": "workspace:*"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "electron-builder": "^24.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.15.0"
   }
 }
 ```
 
-### Shared
+### Native Module (macOS)
 
 ```json
 {
+  "name": "screencapturekit",
+  "version": "1.0.0",
+  "main": "index.js",
   "dependencies": {
-    "react": "18.3.1",
-    "react-native": "0.76.5",
-    "react-native-web": "~0.19.0",
-    "zustand": "^5.0.0",
-    "@react-native-async-storage/async-storage": "^1.23.0"
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0"
+  },
+  "scripts": {
+    "rebuild": "node-gyp rebuild",
+    "build": "node-gyp build"
   }
 }
 ```
 
-## Platform Limitations
-
-**iOS:**
-- Microphone recording only (no system audio)
-- Background recording supported
-- Interruptions handled automatically
-- iOS 17.0+ required
+## Platform Capabilities
 
 **macOS:**
-- Microphone and system audio supported
-- Requires macOS 12.3+ for system audio
+- Microphone and system audio fully supported
+- Requires macOS 12.3+ for system audio (ScreenCaptureKit)
 - User must manually enable Screen Recording permission
-- No automatic permission request API
+- No automatic permission prompt API for screen recording
+- Universal binary (Intel + Apple Silicon)
 
-**Windows/Linux:**
-- Microphone only (system audio future)
+**Windows:**
+- Microphone fully supported
+- System audio: Future (WASAPI loopback recording)
+
+**Linux:**
+- Microphone fully supported
+- System audio: Future (PulseAudio monitor source)
+- Varies by distribution and audio subsystem
 
 ## Out of Scope
 
@@ -631,6 +707,8 @@ Files are accessible via filesystem. Users can manually share/export using OS to
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2025-01-05
-**Focus**: Minimal, reliable recording for telehealth with interruption handling
+**Version**: 1.0.0
+**Project Name**: Bridge
+**Last Updated**: 2025-01-13
+**Focus**: Electron desktop audio recording for telehealth
+**Scope**: Desktop only (macOS/Windows/Linux), no mobile

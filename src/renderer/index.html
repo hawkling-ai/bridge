@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bridge - Audio Recorder</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      max-width: 600px;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 8px 4px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    h1 { font-size: 24px; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Bridge Audio Recorder</h1>
+  <p>Minimal macOS prototype - Check console for device info</p>
+
+  <div>
+    <h3>Recording Controls</h3>
+    <button onclick="audioRecorder.startMicrophoneAudio()">
+      🎤 Record Microphone
+    </button>
+    <button onclick="audioRecorder.startSystemAudio()">
+      🔊 Record System Audio
+    </button>
+    <button onclick="audioRecorder.stopRecording()" style="background: #ff4444; color: white;">
+      ⏹ Stop Recording
+    </button>
+  </div>
+
+  <div>
+    <h3>Device Info</h3>
+    <button onclick="audioRecorder.enumerateDevices()">
+      🔍 List Audio Devices
+    </button>
+  </div>
+
+  <div>
+    <h3>Instructions</h3>
+    <ul>
+      <li><strong>Microphone:</strong> Click "Record Microphone" → Allow permission → Speak</li>
+      <li><strong>System Audio:</strong> Click "Record System Audio" → Select "macOS Audio" → Allow</li>
+      <li><strong>Stop:</strong> Click "Stop Recording" to save</li>
+      <li><strong>Files saved to:</strong> ~/Documents/Bridge/Recordings/</li>
+    </ul>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
