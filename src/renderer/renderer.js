@@ -6,10 +6,11 @@ let startTime = null;
 let audioContext = null;
 let analyser = null;
 let visualizerInterval = null;
+let recordingMode = null; // 'microphone' | 'system'
 
 // Pure function: Generate filename
-const generateFilename = (mode) =>
-  `recording_${mode}_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+const generateFilename = (mode, extension = 'webm') =>
+  `recording_${mode}_${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
 
 // Pure function: Format duration
 const formatDuration = (ms) => {
@@ -35,22 +36,60 @@ const enumerateDevices = async () => {
   return { audioInputs, audioOutputs };
 };
 
-// System audio recording (macOS)
+// System audio recording (Swift binary → FLAC)
 const startSystemAudio = async () => {
-  audioStream = await navigator.mediaDevices.getDisplayMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      sampleRate: 48000,
-    },
-    video: false,
+  // Check permissions first
+  const permissionStatus = await window.electron.systemAudio.checkPermissions();
+
+  if (!permissionStatus.supported) {
+    throw new Error(permissionStatus.reason || 'System audio not supported on this platform');
+  }
+
+  if (!permissionStatus.granted) {
+    throw new Error(
+      'Screen Recording permission required. ' +
+      'Enable in System Settings > Privacy & Security > Screen Recording'
+    );
+  }
+
+  // Generate filename for FLAC output
+  const filename = generateFilename('system', 'flac');
+  recordingMode = 'system';
+  startTime = Date.now();
+
+  console.log('\n=== System Audio Recording (Swift) ===');
+  console.log('Mode: ScreenCaptureKit → FLAC');
+  console.log('Format: 48kHz stereo, lossless');
+  console.log('Starting...');
+
+  // Setup event listeners
+  window.electron.systemAudio.onStarted((response) => {
+    console.log('Recording started:', response);
+    console.log('Path:', response.path);
   });
 
-  return startRecording('system');
+  window.electron.systemAudio.onStopped((response) => {
+    const duration = Date.now() - startTime;
+    console.log('\n=== Recording Stopped ===');
+    console.log('Duration:', formatDuration(duration));
+    console.log('Timestamp:', response.timestamp);
+    console.log('========================\n');
+
+    recordingMode = null;
+    startTime = null;
+  });
+
+  window.electron.systemAudio.onError((message) => {
+    console.error('Recording error:', message);
+    recordingMode = null;
+    startTime = null;
+  });
+
+  // Start recording via Swift binary
+  await window.electron.systemAudio.start(filename);
 };
 
-// Microphone recording
+// Microphone recording (WebM)
 const startMicrophoneAudio = async () => {
   audioStream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -61,6 +100,7 @@ const startMicrophoneAudio = async () => {
     },
   });
 
+  recordingMode = 'microphone';
   return startRecording('microphone');
 };
 
@@ -171,12 +211,17 @@ const startRecording = (mode) => {
   return mediaRecorder;
 };
 
-// Stop recording (fail-fast)
-const stopRecording = () => {
-  if (!mediaRecorder || mediaRecorder.state !== 'recording') {
+// Stop recording (handles both microphone and system audio)
+const stopRecording = async () => {
+  if (recordingMode === 'system') {
+    // Stop Swift binary recording
+    await window.electron.systemAudio.stop();
+  } else if (mediaRecorder && mediaRecorder.state === 'recording') {
+    // Stop WebM microphone recording
+    mediaRecorder.stop();
+  } else {
     throw new Error('No active recording');
   }
-  mediaRecorder.stop();
 };
 
 // Global error handler (fail-fast display)

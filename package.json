@@ -4,8 +4,9 @@
   "description": "Minimal desktop audio recording for macOS",
   "main": "src/main/index.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --enable-logging"
+    "build:swift": "bash scripts/build-swift.sh",
+    "start": "npm run build:swift && electron .",
+    "dev": "npm run build:swift && electron . --enable-logging"
   },
   "keywords": ["electron", "audio", "recording", "macos"],
   "author": "",
