@@ -21,6 +21,9 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
     private var writeErrorCount = 0
     private let maxWriteErrors = 10
 
+    // Static reference for signal handler
+    private static var shared: AudioRecorder?
+
     // MARK: - Entry Point
     static func main() {
         let recorder = AudioRecorder()
@@ -61,14 +64,12 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
 
     // MARK: - Recording Lifecycle
     func startRecording(path: String) {
+        // Store reference for signal handler
+        AudioRecorder.shared = self
+
         // Setup signal handler for graceful shutdown
-        signal(SIGINT) { [weak self] _ in
-            Response.send(["code": "STOPPING"])
-            // Trigger cleanup on main thread
-            DispatchQueue.main.async {
-                self?.cleanup()
-            }
-        }
+        // Must use C function pointer (no context capture)
+        signal(SIGINT, handleSignal)
 
         // Check permissions first
         guard CGPreflightScreenCaptureAccess() else {
@@ -90,6 +91,15 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
 
         // Wait for recording to finish
         semaphore.wait()
+    }
+
+    // MARK: - Signal Handler (C function)
+    private static func handleSignal(_ signal: Int32) {
+        Response.send(["code": "STOPPING"])
+        // Trigger cleanup on main thread
+        DispatchQueue.main.async {
+            shared?.cleanup()
+        }
     }
 
     // MARK: - Stream Setup
