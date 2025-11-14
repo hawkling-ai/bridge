@@ -18,6 +18,8 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
     private var audioFile: AVAudioFile?
     private let semaphore = DispatchSemaphore(value: 0)
     private var streamStarted = false
+    private var writeErrorCount = 0
+    private let maxWriteErrors = 10
 
     // MARK: - Entry Point
     static func main() {
@@ -60,8 +62,12 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
     // MARK: - Recording Lifecycle
     func startRecording(path: String) {
         // Setup signal handler for graceful shutdown
-        signal(SIGINT) { _ in
+        signal(SIGINT) { [weak self] _ in
             Response.send(["code": "STOPPING"])
+            // Trigger cleanup on main thread
+            DispatchQueue.main.async {
+                self?.cleanup()
+            }
         }
 
         // Check permissions first
@@ -71,7 +77,9 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
         }
 
         // Get available display content
-        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, error in
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { [weak self] content, error in
+            guard let self = self else { return }
+
             guard let content = content, error == nil else {
                 Response.send(["code": "CONTENT_ERROR", "message": error?.localizedDescription ?? "Unknown"])
                 exit(1)
@@ -140,24 +148,37 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
     // MARK: - Audio File Creation
     private func createAudioFile(at path: String) throws -> AVAudioFile {
         let url = URL(fileURLWithPath: path)
-        let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 48000,
-            channels: 2,
-            interleaved: false
-        )!
 
-        return try AVAudioFile(
-            forWriting: url,
-            settings: [
+        // Try FLAC first, fallback to WAV if FLAC fails
+        let flacSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatFLAC,
+            AVSampleRateKey: 48000,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderBitRateKey: 0,
+            AVLinearPCMBitDepthKey: 24,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+
+        // Try creating FLAC file
+        do {
+            return try AVAudioFile(forWriting: url, settings: flacSettings)
+        } catch {
+            // Fallback to WAV (always works)
+            Response.send(["code": "DEBUG", "message": "FLAC failed, using WAV: \(error.localizedDescription)"])
+
+            let wavSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: 48000,
                 AVNumberOfChannelsKey: 2,
-                AVFormatIDKey: kAudioFormatFLAC,  // Lossless compression
-                AVEncoderBitRateKey: 0  // Max quality
-            ],
-            commonFormat: format.commonFormat,
-            interleaved: format.isInterleaved
-        )
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsNonInterleaved: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+
+            return try AVAudioFile(forWriting: url, settings: wavSettings)
+        }
     }
 
     // MARK: - Stream Delegate
@@ -169,12 +190,26 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
     // MARK: - Audio Processing
     func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, streamStarted else { return }
-        guard let pcmBuffer = buffer.toPCMBuffer() else { return }
+        guard let pcmBuffer = buffer.toPCMBuffer() else {
+            writeErrorCount += 1
+            if writeErrorCount < 5 {
+                Response.send(["code": "BUFFER_CONVERSION_ERROR", "count": writeErrorCount])
+            }
+            return
+        }
 
         do {
             try audioFile?.write(from: pcmBuffer)
+            writeErrorCount = 0  // Reset on successful write
         } catch {
-            Response.send(["code": "WRITE_ERROR", "message": error.localizedDescription])
+            writeErrorCount += 1
+            Response.send(["code": "WRITE_ERROR", "message": error.localizedDescription, "count": writeErrorCount])
+
+            // Stop recording if too many consecutive errors
+            if writeErrorCount >= maxWriteErrors {
+                Response.send(["code": "TOO_MANY_ERRORS", "message": "Stopping due to \(writeErrorCount) consecutive write errors"])
+                cleanup()
+            }
         }
     }
 

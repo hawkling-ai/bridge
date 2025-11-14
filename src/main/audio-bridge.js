@@ -48,6 +48,8 @@ const startRecording = (outputPath) =>
       }
     };
 
+    let resolved = false;
+
     // Parse JSON responses from Swift
     proc.stdout.on('data', data => {
       stdoutBuffer += data.toString();
@@ -63,6 +65,7 @@ const startRecording = (outputPath) =>
           switch (response.code) {
             case 'RECORDING_STARTED':
               emitter.events.start?.(response);
+              resolved = true;
               resolve(emitter);
               break;
 
@@ -74,15 +77,33 @@ const startRecording = (outputPath) =>
               emitter.events.stop?.(response);
               break;
 
-            case 'WRITE_ERROR':
-            case 'STREAM_ERROR':
-            case 'STREAM_STOPPED':
+            // Fatal errors - reject if not yet resolved
             case 'PERMISSION_DENIED':
             case 'CONTENT_ERROR':
             case 'NO_DISPLAY':
             case 'FILE_ERROR':
+            case 'STREAM_ERROR':
+            case 'TOO_MANY_ERRORS':
+              const fatalError = new Error(response.message || response.code);
+              emitter.events.error?.(fatalError);
+              if (!resolved) {
+                resolved = true;
+                reject(fatalError);
+              }
+              break;
+
+            // Non-fatal errors - just emit event
+            case 'WRITE_ERROR':
+            case 'BUFFER_CONVERSION_ERROR':
+            case 'STOP_ERROR':
+            case 'STREAM_STOPPED':
               emitter.events.error?.(new Error(response.message || response.code));
-              reject(new Error(response.message || response.code));
+              break;
+
+            // Debug/info messages
+            case 'DEBUG':
+              console.log('[Swift debug]:', response.message);
+              emitter.events.debug?.(response.message);
               break;
 
             default:
@@ -108,10 +129,11 @@ const startRecording = (outputPath) =>
     });
 
     proc.on('close', code => {
-      if (code !== 0 && code !== null) {
+      if (code !== 0 && code !== null && !resolved) {
         const errorMsg = `Swift recorder exited with code ${code}. ` +
           `stdout: "${stdoutBuffer}", stderr: "${stderrBuffer}"`;
         console.error(errorMsg);
+        resolved = true;
         reject(new Error(errorMsg));
       }
     });
