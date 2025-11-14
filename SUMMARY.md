@@ -144,19 +144,19 @@ User clicks "Record System Audio"
 xcode-select --install
 
 # Install dependencies
-pnpm install
+npm install
 
 # Build Swift binary
-pnpm run build:swift
+npm run build:swift
 ```
 
 ### Run App
 ```bash
 # Development mode (with logging)
-pnpm run dev
+npm run dev
 
 # Production mode
-pnpm start
+npm start
 ```
 
 ### Test Microphone
@@ -210,7 +210,7 @@ Adapted from **electron-system-audio-recorder** - a proven, production-ready app
 node -e "require('./src/main/audio-bridge').checkPermissions()"
 
 # Test full app
-pnpm run dev
+npm run dev
 ```
 
 ### 5. Easy to Extend
@@ -299,4 +299,4 @@ The system audio recording on macOS is **fully functional** and ready to test on
 
 ---
 
-**Ready to test on macOS**: Run `pnpm run dev` and try both recording modes!
+**Ready to test on macOS**: Run `npm run dev` and try both recording modes!

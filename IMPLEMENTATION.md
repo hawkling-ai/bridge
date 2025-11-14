@@ -142,7 +142,7 @@ await audioRecorder.stopRecording();
 
 **All Platforms**:
 - Node.js 20+
-- pnpm 8+
+- npm (included with Node.js)
 
 **macOS (for system audio)**:
 - macOS 13.0+ (13.2+ recommended)
@@ -153,16 +153,16 @@ await audioRecorder.stopRecording();
 
 ```bash
 # Install Node dependencies
-pnpm install
+npm install
 
 # Build Swift binary (macOS only, auto-skips on Linux)
-pnpm run build:swift
+npm run build:swift
 
 # Run app
-pnpm start
+npm start
 
 # Or run with logging
-pnpm run dev
+npm run dev
 ```
 
 ### Build Output
