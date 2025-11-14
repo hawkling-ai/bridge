@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euxo pipefail
 
 echo "Building Swift audio recorder binary..."
 
