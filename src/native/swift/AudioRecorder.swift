@@ -201,10 +201,13 @@ class AudioRecorder: NSObject, SCStreamDelegate, SCStreamOutput {
 extension CMSampleBuffer {
     func toPCMBuffer() -> AVAudioPCMBuffer? {
         guard let formatDesc = CMSampleBufferGetFormatDescription(self) else { return nil }
-        guard let audioStreamDesc = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else { return nil }
+        guard let audioStreamDescPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else { return nil }
 
-        let format = AVAudioFormat(streamDescription: &audioStreamDesc.mSampleRate)
-        guard let format = format else { return nil }
+        // Create mutable copy of the stream description
+        var audioStreamDesc = audioStreamDescPtr.pointee
+
+        // Create AVAudioFormat from the stream description
+        guard let format = AVAudioFormat(streamDescription: &audioStreamDesc) else { return nil }
 
         let frameCount = CMSampleBufferGetNumSamples(self)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else { return nil }
